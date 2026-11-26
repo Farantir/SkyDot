@@ -196,22 +196,63 @@ private:
             for (const auto key : *keys) {
                 const auto* in = key != k_no_key ? pkg_.input(key) : nullptr;
                 s.params.push_back(in);
-                if (in == nullptr) {
-                    continue;
-                }
-                const std::string_view type = sv(in->type());
-                if (type == "Location" && s.location == nullptr) {
-                    s.location = in;
-                } else if ((type == "SingleRef" || type == "TargetSelector") && s.target == nullptr) {
-                    s.target = in;
-                } else if (type == "ObjectList" && s.list_key < 0) {
+                if (in != nullptr && sv(in->type()) == "ObjectList" && s.list_key < 0) {
                     s.list_key = key;
-                } else if (type == "Float" && s.procedure == Procedure::wait && s.seconds == 0.0) {
+                } else if (in != nullptr && sv(in->type()) == "Float" && s.procedure == Procedure::wait &&
+                           s.seconds == 0.0) {
                     s.seconds = static_cast<double>(in->number());
                 }
             }
         }
+        const auto at = [&](int i) -> const wfb::PackageInput* {
+            return i >= 0 && static_cast<std::size_t>(i) < s.params.size() ? s.params[static_cast<std::size_t>(i)]
+                                                                          : nullptr;
+        };
+        const auto is_ref = [](const wfb::PackageInput* in) {
+            const std::string_view type = in != nullptr ? sv(in->type()) : std::string_view();
+            return type == "SingleRef" || type == "TargetSelector";
+        };
+        if (const auto slots = slots_of(s.name)) {
+            // The place may be a Location or a reference (a Travel to "Player"); the target is a reference.
+            const auto* place = at(slots->place);
+            s.location = place != nullptr && (sv(place->type()) == "Location" || is_ref(place)) ? place : nullptr;
+            s.target = is_ref(at(slots->target)) ? at(slots->target) : nullptr;
+            return s;
+        }
+        for (const auto* in : s.params) {
+            if (in != nullptr && sv(in->type()) == "Location" && s.location == nullptr) {
+                s.location = in;
+            } else if (is_ref(in) && s.target == nullptr) {
+                s.target = in;
+            }
+        }
         return s;
+    }
+
+    /// Which parameter of a procedure says where it goes and which whom it is about, from the vanilla
+    /// templates' parameter lists (docs/ai.md); -1 none.
+    struct Slots {
+        int place;
+        int target;
+    };
+    static std::optional<Slots> slots_of(std::string_view procedure) {
+        static constexpr std::pair<std::string_view, Slots> k_slots[] = {
+            {"Travel", {0, -1}},       {"Sandbox", {0, -1}},       {"Wander", {0, -1}},
+            {"HoldPosition", {0, -1}}, {"UnlockDoors", {0, -1}},   {"LockDoors", {0, -1}},
+            {"Guard", {0, 1}},         {"Find", {0, 1}},           {"Sit", {-1, 0}},
+            {"Sleep", {-1, 0}},        {"Eat", {-1, 0}},           {"UseIdleMarker", {-1, 0}},
+            {"Activate", {-1, 0}},     {"Patrol", {-1, 0}},        {"Follow", {-1, 0}},
+            {"ForceGreet", {1, -1}},   {"Escort", {2, 0}},         {"FollowTo", {1, 0}},
+            {"KeepAnEyeOn", {1, 0}},   {"Flee", {1, 0}},           {"DialogueActivate", {1, 0}},
+            {"Shout", {0, 2}},         {"UseWeapon", {0, 2}},      {"UseMagic", {0, 2}},
+            {"Hover", {0, -1}},        {"Orbit", {0, -1}},
+        };
+        for (const auto& [name, slots] : k_slots) {
+            if (name == procedure) {
+                return slots;
+            }
+        }
+        return std::nullopt;
     }
 
     const Package& pkg_;

@@ -6,6 +6,7 @@
 #include "assets/vpath.hpp"
 #include "actors/actor.hpp"
 #include "data/actors.hpp"
+#include "data/coordinates.hpp"
 #include "data/fb_search.hpp"
 #include "conditions/functions.hpp"
 #include "vm/papyrus.hpp"
@@ -20,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <limits>
 #include <numbers>
 #include <set>
 
@@ -49,6 +51,8 @@ constexpr double k_door_reach = 200.0;
 constexpr double k_arrive = 96.0;
 constexpr double k_edge_slack = 32.0;
 constexpr double k_stand_reach = 80.0;
+/// A patrol point is reached within its radius input, but not closer than this (PLACEHOLDER).
+constexpr double k_patrol_min_reach = 32.0;
 /// Game units: a ForceGreet speaks from here (assumed; the template's Travel brings it to 300-500).
 constexpr double k_greet_distance = 150.0;
 /// Follow's and Escort's distances when the package gives none (the Follow and Escort templates').
@@ -154,6 +158,8 @@ public:
 
     /// The actor whose package is being worked out.
     Mind* mind = nullptr;
+    /// Its package is being chosen (not planned).
+    bool choosing = false;
 
     std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subject,
                                          const conditions::ConditionContext& ctx) override {
@@ -164,6 +170,16 @@ public:
             }
             return 0.0;
         case conditions::fn::get_random_percent:
+            if (mind != nullptr && choosing && ctx.package != nullptr && ctx.package->own != nullptr) {
+                // A package's own conditions roll once per actor, package and game hour (assumed): chosen
+                // again every few seconds, the choice does not flip on the dice alone.
+                std::uint64_t h = (static_cast<std::uint64_t>(mind->ref) << 32U) ^ ctx.package->own->id();
+                h ^= static_cast<std::uint64_t>(std::floor(ai_.clock_.days * 24.0)) * 0x9E3779B97F4A7C15ULL;
+                h ^= h >> 33U;
+                h *= 0xFF51AFD7ED558CCDULL;
+                h ^= h >> 33U;
+                return static_cast<double>(h % 100U);
+            }
             return mind != nullptr ? std::optional<double>(std::floor(ai_.roll(*mind) * 100.0))
                                    : std::nullopt;
         case ai::k_get_within_package_location: {
@@ -694,6 +710,11 @@ std::optional<SkydotAi::Spot> SkydotAi::target_spot(Mind& m, const wfb::PackageI
     }
 }
 
+std::optional<SkydotAi::Spot> SkydotAi::place_spot(Mind& m, const wfb::PackageInput& in) {
+    const std::string_view type = in.type() != nullptr ? in.type()->string_view() : std::string_view();
+    return type == "Location" ? location_spot(m, in) : target_spot(m, in);
+}
+
 std::uint32_t SkydotAi::find_ref(const Spot& around, std::int32_t type, std::uint32_t value, std::uint32_t asker) {
     std::vector<const wfb::Cell*> cells;
     const auto* space = world_->data().cell_ptr(around.space);
@@ -778,14 +799,14 @@ std::optional<SkydotAi::Spot> SkydotAi::step_spot(Mind& m, const ai::Step& s) {
                 return spot;
             }
         }
-        return s.location != nullptr ? location_spot(m, *s.location) : std::nullopt;
+        return s.location != nullptr ? place_spot(m, *s.location) : std::nullopt;
     case Procedure::follow:
         return s.target != nullptr ? target_spot(m, *s.target) : std::nullopt;
     case Procedure::wait:
     case Procedure::other:
         return std::nullopt;
     default: // ForceGreet's place is its target's; Escort's is where it leads to
-        return s.location != nullptr ? location_spot(m, *s.location) : std::nullopt;
+        return s.location != nullptr ? place_spot(m, *s.location) : std::nullopt;
     }
 }
 
@@ -793,7 +814,7 @@ void SkydotAi::do_find(Mind& m, const ai::Step& s) {
     if (s.list_key < 0 || s.target == nullptr || m.lists.contains(s.list_key)) {
         return; // Found once per package.
     }
-    std::optional<Spot> around = s.location != nullptr ? location_spot(m, *s.location) : actor_spot(m);
+    std::optional<Spot> around = s.location != nullptr ? place_spot(m, *s.location) : actor_spot(m);
     if (!around) {
         return;
     }
@@ -962,9 +983,11 @@ bool SkydotAi::choose(Mind& m) {
         return true;
     };
     const auto forced = forced_.find(m.ref);
+    conditions_->choosing = true;
     const auto id = forced != forced_.end() && !forced->second.empty()
                         ? forced->second.back()
                         : ai::choose_package(*root(), packages_of(m), m.ref, clock_, host, skip);
+    conditions_->choosing = false;
     if (id == m.package && !m.steps.empty()) {
         replan(m);
         return false;
@@ -980,14 +1003,34 @@ bool SkydotAi::replan(Mind& m, bool finished) {
         return false;
     }
     const auto pkg = ai::resolve_package(*root(), m.package);
-    if (!ai::replans(pkg)) {
+    const bool moving = ai::replans(pkg);
+    if (finished && !moving) {
         return false;
     }
     conditions_->mind = &m;
     const ai::ConditionSource host(*conditions_, conditions_.get());
+    // While it runs, the plan is made again with the dice it was made with: Random nodes and
+    // GetRandomPercent answer as before, so only conditions that changed change it. Run out, a tree
+    // that reads where actors are rolls afresh.
+    const std::uint64_t dice = m.dice;
+    if (finished) {
+        m.plan_dice = m.dice;
+    } else {
+        m.dice = m.plan_dice;
+    }
     auto steps = ai::plan_steps(pkg, host, m.ref, [&]() { return roll(m); });
-    if (std::ranges::equal(steps, m.steps, [](const ai::Step& a, const ai::Step& b) { return a.same_as(b); })) {
+    if (!finished) {
+        m.dice = dice;
+    }
+    const auto same = [](const ai::Step& a, const ai::Step& b) { return a.same_as(b); };
+    if (std::ranges::equal(steps, m.steps, same)) {
         return false;
+    }
+    // The steps up to the one under way are unchanged: it goes on with it (seated stays seated).
+    if (!finished && m.step < steps.size() &&
+        std::equal(m.steps.begin(), m.steps.begin() + static_cast<std::ptrdiff_t>(m.step) + 1, steps.begin(), same)) {
+        m.steps = std::move(steps);
+        return true;
     }
     m.steps = std::move(steps);
     m.step = 0;
@@ -1048,6 +1091,7 @@ void SkydotAi::start_package(Mind& m, std::uint32_t previous) {
     const auto pkg = ai::resolve_package(*root(), m.package);
     conditions_->mind = &m;
     const ai::ConditionSource host(*conditions_, conditions_.get());
+    m.plan_dice = m.dice;
     m.steps = ai::plan_steps(pkg, host, m.ref, [&]() { return roll(m); });
     if (formats::has_flag(pkg.own->flags(), wfb::PackageFlags::unlock_doors_at_start)) {
         set_doors_locked(actor_spot(m), false);
@@ -1056,7 +1100,7 @@ void SkydotAi::start_package(Mind& m, std::uint32_t previous) {
         // Not built: what its steps do to doors happens now.
         for (const auto& s : m.steps) {
             if (s.procedure == ai::Procedure::unlock_doors || s.procedure == ai::Procedure::lock_doors) {
-                if (auto spot = s.location != nullptr ? location_spot(m, *s.location) : actor_spot(m)) {
+                if (auto spot = s.location != nullptr ? place_spot(m, *s.location) : actor_spot(m)) {
                     set_doors_locked(*spot, s.procedure == ai::Procedure::lock_doors);
                 }
             }
@@ -1472,7 +1516,7 @@ void SkydotAi::leave(Mind& m, SkydotActor& actor, std::uint32_t door) {
     for (auto i = m.step; i < m.steps.size(); ++i) {
         const auto& s = m.steps[i];
         if (s.procedure == ai::Procedure::unlock_doors || s.procedure == ai::Procedure::lock_doors) {
-            if (auto spot = s.location != nullptr ? location_spot(m, *s.location) : actor_spot(m)) {
+            if (auto spot = s.location != nullptr ? place_spot(m, *s.location) : actor_spot(m)) {
                 set_doors_locked(*spot, s.procedure == ai::Procedure::lock_doors);
             }
         }
@@ -1539,10 +1583,28 @@ bool SkydotAi::go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, d
     return false;
 }
 
-void SkydotAi::load_patrol(Mind& m) {
+double SkydotAi::patrol_wait(std::uint32_t ref) const {
+    const auto* c = world_->data().cell_ptr(static_cast<std::uint32_t>(world_->get_ref_cell(ref)));
+    if (c == nullptr) {
+        return 0.0;
+    }
+    // The point's patrol data (XPRD), else the idle marker's timer.
+    if (const auto* points = c->patrol_points()) {
+        const auto i = first_at_least(points, ref, [](const wfb::PatrolPoint* p) { return p->ref(); });
+        if (i < points->size() && points->Get(i)->ref() == ref && points->Get(i)->idle_time() > 0.0F && std::isfinite(points->Get(i)->idle_time())) {
+            return static_cast<double>(points->Get(i)->idle_time());
+        }
+    }
+    const auto* r = lookup(c->refs(), ref);
+    const auto* marker = r != nullptr ? lookup(root()->idle_markers(), r->base()) : nullptr;
+    return marker != nullptr ? static_cast<double>(std::max(0.0F, marker->timer())) : 0.0;
+}
+
+void SkydotAi::load_patrol(Mind& m, const ai::Step& s) {
     // Patrol markers: the start, then its linked references in turn.
     m.patrol.clear();
     m.patrol_next = 0;
+    m.patrol_wait = 0.0;
     if (!m.target) {
         return;
     }
@@ -1550,9 +1612,26 @@ void SkydotAi::load_patrol(Mind& m) {
     for (auto r = m.target->ref; r != 0 && !seen.contains(r) && m.patrol.size() < 32; r = linked_ref(r, 0)) {
         seen.insert(r);
         if (auto at = ref_spot(r); at && at->space == m.target->space) {
-            m.patrol.push_back(at->position);
+            m.patrol.push_back({at->position, at->rotation_z, patrol_wait(r)});
         }
     }
+    // Parameter 3, "Start At Nearest?".
+    if (s.number(3) != 0.0 && !m.patrol.empty()) {
+        float best = std::numeric_limits<float>::max();
+        for (std::size_t i = 0; i < m.patrol.size(); ++i) {
+            if (const float d = m.patrol[i].position.distance_to(m.last); d < best) {
+                best = d;
+                m.patrol_next = i;
+            }
+        }
+    }
+}
+
+double SkydotAi::yaw_of(float rotation_z) {
+    // The facing a node built with this rotation has (cell_builder.cpp, SkydotActor::_ready).
+    const Vector3 forward =
+        skyrim_transform(Vector3(), Vector3(0, 0, rotation_z), 1.0).basis.xform(Vector3(0, 0, -1));
+    return std::atan2(-static_cast<double>(forward.x), -static_cast<double>(forward.z));
 }
 
 void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
@@ -1603,7 +1682,7 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
         }
         m.target = step_spot(m, s);
         if (s.procedure == Procedure::patrol && m.target) {
-            load_patrol(m);
+            load_patrol(m, s);
         }
     }
     m.step_time += seconds;
@@ -1631,9 +1710,19 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
             next_step(m);
         }
         return;
+    case Procedure::guard:
+        // It stands at its place, turned as the marker there is; the radius is the area it guards.
+        actor.set_wander(false);
+        if (m.target && go(m, actor, *m.target, k_stand_reach, seconds) && !actor.is_walking() && m.target->ref != 0 &&
+            m.target->ref != m.ref) {
+            actor.turn_to(yaw_of(m.target->rotation_z), seconds);
+        }
+        if (timed_out) {
+            next_step(m);
+        }
+        return;
     case Procedure::sandbox:
-    case Procedure::wander:
-    case Procedure::guard: {
+    case Procedure::wander: {
         // A sandbox in front of a step that uses furniture (the Sit, Eat and Sleep templates) gives way to it
         // as soon as the furniture can be used.
         for (std::size_t later = m.step + 1; later < m.steps.size(); ++later) {
@@ -1666,18 +1755,43 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
         }
         return;
     }
-    case Procedure::patrol:
+    case Procedure::patrol: {
+        // Parameters: the start, the point radius, repeatable, start at nearest, ride horse, static pathing.
         actor.set_wander(false);
         if (m.patrol.empty()) {
             return;
         }
-        if (go(m, actor, Spot{m.target->space, m.patrol[m.patrol_next], 0.0F, 0.0, 0}, k_arrive, seconds)) {
+        const auto& point = m.patrol[m.patrol_next];
+        const auto advance = [&]() {
             m.walks = 0;
+            m.patrol_wait = 0.0;
             if (++m.patrol_next >= m.patrol.size()) {
                 m.patrol_next = 0;
+                if (s.number(2, 1.0) == 0.0) {
+                    next_step(m); // not repeatable: done at the last point
+                }
+            }
+        };
+        if (m.patrol_wait > 0.0) {
+            // Waiting at a point: turned as the marker is (its idles are not played).
+            m.patrol_wait -= seconds;
+            actor.turn_to(yaw_of(point.rotation_z), seconds);
+            if (m.patrol_wait <= 0.0) {
+                advance();
+            }
+            return;
+        }
+        const double reach = s.number(1) > 0.0 ? std::max(s.number(1), k_patrol_min_reach) : k_arrive;
+        if (go(m, actor, Spot{m.target->space, point.position, point.rotation_z, 0.0, 0}, reach, seconds)) {
+            if (point.wait > 0.0) {
+                actor.stop();
+                m.patrol_wait = point.wait;
+            } else {
+                advance();
             }
         }
         return;
+    }
     case Procedure::force_greet:
         force_greet_step(m, actor, s, seconds);
         return;
@@ -1732,7 +1846,7 @@ void SkydotAi::force_greet_step(Mind& m, SkydotActor& actor, const ai::Step& s, 
     }
     m.greet_wait = std::max(0.0, m.greet_wait - seconds);
     // Whom to greet: the reference of its place (ForceGreetLoc, the player), where it is now.
-    m.target = s.location != nullptr ? location_spot(m, *s.location) : std::nullopt;
+    m.target = s.location != nullptr ? place_spot(m, *s.location) : std::nullopt;
     if (!m.target || m.target->ref == 0 || m.target->ref == m.ref || m.target->space != m.space ||
         (m.target->ref == k_player_ref && !player_alive_)) {
         return; // no one here to greet: it stands
@@ -1858,6 +1972,7 @@ Dictionary SkydotAi::get_actor_state(std::int64_t ref) {
         out["target"] = t;
     }
     out["door"] = static_cast<std::int64_t>(m->door);
+    out["patrol_wait"] = m->patrol_wait;
     return out;
 }
 

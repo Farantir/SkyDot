@@ -157,7 +157,7 @@ void SkydotAi::flight_idle(Mind& m, SkydotActor& actor, double seconds) {
             m.step_started = true;
             m.step_time = 0.0;
             m.target = step_spot(m, m.steps[m.step]);
-            load_patrol(m);
+            load_patrol(m, m.steps[m.step]);
         }
     }
     if (!m.patrol.empty() && m.package != 0 && m.step < m.steps.size() &&
@@ -165,10 +165,10 @@ void SkydotAi::flight_idle(Mind& m, SkydotActor& actor, double seconds) {
         if (m.patrol_next >= m.patrol.size()) {
             m.patrol_next = 0;
         }
-        flight::Vec3 goal = vec(m.patrol[m.patrol_next]);
+        flight::Vec3 goal = vec(m.patrol[m.patrol_next].position);
         if (flight::distance_xy(body.pos, goal) < k_patrol_reach) {
             m.patrol_next = (m.patrol_next + 1) % m.patrol.size();
-            goal = vec(m.patrol[m.patrol_next]);
+            goal = vec(m.patrol[m.patrol_next].position);
         }
         command.kind = flight::CommandKind::fly_to;
         command.point = goal;

@@ -1,7 +1,7 @@
 # AI packages
 
 How placed actors spend their day: `ai/packages.*` reads AI packages
-(PACK) from `world.fb` (format 9, see `formats/pack-format.md`), and
+(PACK) from `world.fb` (see `formats/pack-format.md`), and
 `SkydotAi` (`ai/ai.*`) runs them against a game clock. Walking itself is
 `SkydotActor` (`actors.md`).
 
@@ -30,7 +30,13 @@ does what its NPC_ says, not what a running quest wants of it.
 Packages are chosen again every 1.5 s for built actors (3 s and 6 s for those
 at the middle and far level of detail, `actors.md`; their steps are also
 updated every 0.2 s and 0.5 s instead of every frame), and every five game
-minutes for the others.
+minutes for the others; the first think is staggered by reference. The 1.5 s
+is assumed (no GMST names it). A package pushed by a script (`push_package`)
+stays above the schedule until popped. The running package is restarted
+only when the choice differs: an unchanged one keeps its step, so a seated
+actor stays seated. While choosing, GetRandomPercent in a package's own
+conditions is a hash of actor, package and game hour (assumed), so the
+choice does not flicker between thinks.
 
 ## What a package does
 
@@ -42,30 +48,42 @@ starts, the tree is flattened into steps:
   conditions pass. **Random:** one child at random (seeded per actor).
   **Simultaneous:** Finds first, then the first procedure that moves or
   stays, for as long as the Waits beside it say.
-- Branch conditions are evaluated then, once; GetNumericPackageData (612)
+- Branch conditions are evaluated then; GetNumericPackageData (612)
   reads the package's own inputs, which is how Sandbox runs its Travel and
   UnlockDoors only when "Unlock On Arrival?" is set. A condition run on
   package data (run_on 6) asks about the reference its input `param3` names.
-- A tree whose branches read where actors are (GetWithinPackageLocation,
-  GetDetected) is planned again on each think and when its steps run out;
-  new steps replace the old. That is how the ForceGreet template travels
-  to the player and then greets.
+- The tree is planned again on each think, replaying the Random choices
+  and GetRandomPercent results of the first plan, so only a branch
+  condition that really changed alters it. Unchanged steps up to the
+  current one are kept (and the furniture with them); otherwise the new
+  steps start over. A tree whose branches read where actors are
+  (GetWithinPackageLocation, GetDetected) is also planned again when its
+  steps run out. That is how the ForceGreet template travels to the
+  player and then greets.
 
-A step's place comes from its procedure's first Location input (PLDT):
-near a reference, in a cell (by its door), near the editor location (where
-the actor was placed), near the actor's linked reference with a keyword,
-a quest alias's reference; anything else is where the actor is. Its target
-is the first SingleRef/TargetSelector input (PTDA: a reference, the nearest
-object of a base or type, a linked reference, an alias, itself) or what a
-Find put in an ObjectList input.
+A step's place and target are the inputs at the parameter positions its
+procedure keeps them in (from the vanilla parameter lists): Travel's,
+Sandbox's or Guard's place is input 0, Escort's destination input 2,
+Follow's or Patrol's target input 0, Shout's target input 2, and so on; a
+procedure not in the table takes the first Location and the first
+SingleRef/TargetSelector. A place may be a Location (PLDT: near a
+reference, in a cell by its door, near the editor location, near the
+linked reference with a keyword, a quest alias's reference; else where the
+actor is) or a SingleRef (Travel to a reference). A target is a SingleRef
+or TargetSelector (PTDA: a reference, the nearest object of a base or type,
+a linked reference, an alias, itself) or what a Find put in an ObjectList
+input. No vanilla package uses a second Location as a place
+(KeepAnEyeOn's EndPursuitArea and ForceGreet's second ForceGreetLoc are
+read nowhere yet).
 
 | Procedure | Built actor |
 | --- | --- |
 | Travel | walks there (within the radius, at least 96 units); done on arrival |
-| Sandbox, Wander, Guard | walks there, then wanders within the radius (at least 256 units) |
-| Sleep, Sit, Eat, UseIdleMarker, Activate on furniture with markers | goes into the furniture (`actors.md`, "Using furniture"): placed in it on load, else walks to the marker's entry point and plays the enter clips; gets up when the step ends or combat starts |
+| Sandbox, Wander | walks there, then wanders within the radius (at least 256 units) |
+| Guard | walks to the place (within 80 units, assumed) and stands there facing the marker's way (when the place is a reference); does not wander. The radius is only the area; the warn and attack radii are not used |
+| Sleep, Sit, Eat, UseIdleMarker, Activate on furniture with markers | goes into the furniture (`actors.md`, "Using furniture"): placed in it on load, else walks to the marker's entry point and plays the enter clips; gets up when the step ends or combat starts. An Activate is done once the actor is in (Faendal's woodpile); an exit clip that ends without the graph going home (the woodpile's carry state) lets the actor out after 1 s (placeholder) |
 | Sleep, Sit, Eat, UseIdleMarker, Activate, HoldPosition otherwise | walks to the bed, chair, marker or place and stands there |
-| Patrol | walks from the start marker along its linked references (no keyword), round again |
+| Patrol | walks from the start marker along its linked references (no keyword); at each point waits its idle time (REFR XPRD, else the IDLM's IDLT), facing the marker's way; reach is PointRadius (input 1, at least 32 units, placeholder) else 96; "Start At Nearest" (input 3) starts at the nearest point; round again only when Repeatable (input 2). The point's idles (XPPA/INAM, all none in vanilla; the IDLM's IDLA) are not played, and FURN points are not entered |
 | Find | the nearest bed (FURN named "bed"), chair ("chair", "bench", "stool", "throne", "seat"), furniture or base within the radius that no other actor has found or uses, for the steps after it |
 | UnlockDoors, LockDoors | the load doors of the place's interior (outside: those within its radius + 1024 units); only doors with a lock are locked |
 | Wait | stands for its seconds |
@@ -175,6 +193,8 @@ still places actors where their packages put them, in their furniture too,
 and nothing else runs (no packages followed, no fights).
 `smoke_ai` covers the test pack's NPC: home by night, out through the door
 by day, unlocking the door outside.
+`sse_patrol_wait` (SE pack) has Skuli in OldHroldanInn stand at a patrol
+point for its XPRD wait and walk on.
 
 Measured on vanilla SE (`ai_run.gd`, Riverwood, 07:57 to 08:30 at 60x): at
 08:00 Alvor and Sigrid come out of Alvor's house, Hod and Dorthe (who
@@ -196,7 +216,8 @@ Alvor's house at 08:00 Alvor and Sigrid leave through the front door.
   a space as the navmesh allows. Load doors are used without the door
   animation.
 - KeepAnEyeOn, Shout, UseWeapon, Flee, Acquire, CarryAndDropItem's
-  carrying: the actor stands. A ForceGreet greets only the player and does
+  carrying (Faendal carries no log): the actor stands. Guard does not warn
+  or attack. A ForceGreet greets only the player and does
   not check menus; Follow and Escort do not ride or keep formation
   (fFollowSpaceBetweenFollowers).
 - Location aliases, "object id/type" locations, GetInCurrentLoc and other

@@ -541,6 +541,13 @@ void SkydotActor::face(double yaw) {
     set_rotation(Vector3(0, r(facing_), 0));
 }
 
+bool SkydotActor::turn_to(double yaw, double delta) {
+    const double diff = wrap(yaw - facing_);
+    const double step = turn_rate_ * delta;
+    face(facing_ + std::clamp(diff, -step, step));
+    return std::abs(diff) <= step;
+}
+
 void SkydotActor::_ready() {
     if (rng_.is_null()) {
         set_seed(static_cast<std::int64_t>(get_instance_id()));

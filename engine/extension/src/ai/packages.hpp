@@ -14,8 +14,9 @@
 //   children in order, a Stacked node the first child whose conditions
 //   pass, a Random node one at random, a Simultaneous node its first moving
 //   (or staying) procedure for as long as its Wait siblings say, after its
-//   Find siblings. Branch conditions are evaluated then, not again, unless
-//   they read where actors are (`replans`).
+//   Find siblings. Branch conditions are evaluated again while it runs
+//   (SkydotAi plans again with the same dice and keeps the step it is in
+//   when that is unchanged).
 //
 // Source for the record layout: xEdit's wbDefinitionsTES5.pas (PACK); for
 // what procedures do, how the vanilla templates use them (docs/ai.md).
@@ -117,8 +118,11 @@ const char* procedure_name(Procedure p);
 struct Step {
     Procedure procedure = Procedure::other;
     std::string name; ///< The procedure as the record names it.
-    /// The procedure's first Location input, and its first SingleRef or
-    /// TargetSelector input; null if it has none.
+    /// The input that says where (a Location, or a SingleRef as Travel's
+    /// "Player"), and the reference it is about (SingleRef or
+    /// TargetSelector), each from the parameter the procedure keeps it in
+    /// (Escort's place is its third, Shout's target its third); null if it
+    /// has none. Procedures not known take the first of each type.
     const wfb::PackageInput* location = nullptr;
     const wfb::PackageInput* target = nullptr;
     /// Its first ObjectList input's key (what Find fills and Sleep, Sit and

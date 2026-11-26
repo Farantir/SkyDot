@@ -45,6 +45,8 @@ namespace {
 constexpr double k_entry_reach = 24.0;
 /// A walk that gave up this far from the entry point is not an enter: the actor stays where it is.
 constexpr double k_enter_snap = 96.0;
+/// Seconds an exit clip may stand at its end before the actor is let out. PLACEHOLDER.
+constexpr double k_exit_stall = 1.0;
 
 constexpr std::uint32_t fourcc(const char (&tag)[5]) {
     return static_cast<std::uint32_t>(static_cast<unsigned char>(tag[0])) |
@@ -338,11 +340,18 @@ bool SkydotAi::furniture_tick(Mind& m, SkydotActor& actor, double seconds) {
         return false;
     }
     FurnitureUse& u = *m.furniture;
-    if (!furniture_wanted(m, u)) {
-        u.exit_asked = true;
-    }
     if (u.state == ai::UseState::entering && u.run->settled()) {
         u.state = ai::UseState::in;
+    }
+    // An Activate is done once the actor is in (Faendal's woodpile: in, then up and on with the wood).
+    if (u.state == ai::UseState::in && m.step < m.steps.size() &&
+        m.steps[m.step].procedure == ai::Procedure::activate) {
+        if (const auto t = furniture_target(m, m.steps[m.step]); t && t->ref == u.ref) {
+            next_step(m);
+        }
+    }
+    if (!furniture_wanted(m, u)) {
+        u.exit_asked = true;
     }
     if (u.exit_asked && u.state == ai::UseState::in && !u.exit_sent) {
         furniture_exit(m, actor);
@@ -360,6 +369,19 @@ bool SkydotAi::furniture_tick(Mind& m, SkydotActor& actor, double seconds) {
         if (!u.landed && u.since_release > 0.25 && actor.is_on_floor()) {
             u.landed = true;
             furniture_events(m, actor, u.run->send("LandStart"));
+        }
+    }
+    // An exit whose clip has ended without the graph going home (the woodpile's pick-up waits for a carry
+    // state we do not have): out after a moment.
+    if (u.state == ai::UseState::leaving && !u.released) {
+        const auto now = u.run->graph().playing();
+        const bool stalled = now && now->mode == 0 && now->time == u.exit_clip_time;
+        u.exit_stalled = stalled ? u.exit_stalled + seconds : 0.0;
+        u.exit_clip_time = now ? now->time : -1.0F;
+        if (u.exit_stalled > k_exit_stall) {
+            std::printf("furniture: 0x%X leaves 0x%X, its exit clip has ended\n", m.ref, u.ref);
+            furniture_end(m, &actor, false);
+            return false;
         }
     }
     if (!u.run->in_furniture()) {

@@ -227,6 +227,8 @@ private:
         bool landed{};                  ///< LandStart went to the graph.
         bool get_up_sent{};             ///< OnGetUp went to the actor's scripts.
         double since_release{};         ///< Seconds the body has been the physics'.
+        float exit_clip_time{-1.0F};    ///< The exit clip's time at the last tick.
+        double exit_stalled{};          ///< Seconds the exit clip has stood at its end.
         std::shared_ptr<const ActorGraphDef> def; ///< The actor's behaviour graph.
         double scale{1.0};              ///< Its size: the scale of the root motion.
         std::unique_ptr<ai::GraphRun> run;
@@ -313,13 +315,20 @@ private:
         int walks{};                     ///< Walks started towards the current spot.
         double think{};                  ///< Seconds before the package is chosen again.
         double idle{};                   ///< Seconds since the actor was last updated (far actors wait).
-        std::vector<godot::Vector3> patrol; ///< Patrol markers (Skyrim space).
+        struct PatrolPoint {
+            godot::Vector3 position;     ///< Skyrim space
+            float rotation_z{};
+            double wait{};               ///< Seconds it stands there (XPRD, else the idle marker's timer).
+        };
+        std::vector<PatrolPoint> patrol;
         std::size_t patrol_next{};
+        double patrol_wait{};            ///< Seconds it still stands at the point reached.
         std::map<std::int32_t, std::uint32_t> lists; ///< ObjectList key -> found ref.
         /// Packages it completed, with the clock (days) then: not chosen again
         /// for the rest of their window.
         std::map<std::uint32_t, double> completed;
         std::uint64_t dice{};            ///< RNG state.
+        std::uint64_t plan_dice{};       ///< The dice the plan was made with: planned again, it rolls the same.
         bool announced{};                ///< actor_arrived sent for its place.
         CombatMind combat;
         std::shared_ptr<FurnitureUse> furniture; ///< The furniture it uses or walks to.
@@ -351,6 +360,8 @@ private:
     std::optional<Spot> settled_spot(Mind& m);
     std::optional<Spot> location_spot(Mind& m, const bethconv::pack::wfb::PackageInput& in);
     std::optional<Spot> target_spot(Mind& m, const bethconv::pack::wfb::PackageInput& in);
+    /// A step's place input: a Location, or a reference (a Travel to the player).
+    std::optional<Spot> place_spot(Mind& m, const bethconv::pack::wfb::PackageInput& in);
     std::optional<Spot> ref_spot(std::uint32_t ref) const;
     Spot actor_spot(const Mind& m) const;
     Spot editor_spot(const Mind& m) const;
@@ -485,7 +496,11 @@ private:
     void flight_idle(Mind& m, SkydotActor& actor, double seconds);
     void flight_log_tick(Mind& m, SkydotActor& actor, double distance, double seconds);
     /// Patrol markers of the current step (the start and the references linked on from it).
-    void load_patrol(Mind& m);
+    void load_patrol(Mind& m, const ai::Step& s);
+    /// Seconds a patroller stands at patrol point `ref`.
+    double patrol_wait(std::uint32_t ref) const;
+    /// The facing (SkydotActor::face) of a reference turned `rotation_z`.
+    static double yaw_of(float rotation_z);
     std::uint32_t orbit_keyword_{0};
     bool orbit_keyword_known_{false};
     bool mage_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);

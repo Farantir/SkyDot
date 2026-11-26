@@ -785,21 +785,22 @@ TEST_CASE("a step takes its place, target, object list and seconds from the inpu
                                         input(5, "Float", 30.0F), input(6, "Float", 7.0F), input(7, "TargetSelector")};
     Planner p({{.id = 1,
                 .inputs = inputs,
-                .tree = sequence({procedure("Travel", {1, 2}),         // a place and a target
-                                  procedure("Sit", {3, 7, 2}),         // a list; the first target of two
+                .tree = sequence({procedure("Travel", {1, 2}),         // the place first; Travel has no target
+                                  procedure("Sit", {3, 7, 2}),         // a list where its target goes
                                   procedure("Wait", {5, 6}),           // its seconds
-                                  procedure("Sandbox", {255, 9, 6})})}}); // no key, no such input, a Float
+                                  procedure("Sandbox", {255, 9, 6}),   // no key, no such input, a Float
+                                  procedure("Mystery", {6, 7, 1, 2})})}}); // not known: the first of each type
     const auto steps = p.steps();
-    REQUIRE(steps.size() == 4);
+    REQUIRE(steps.size() == 5);
 
     CHECK(steps[0].location == p.package.input(1));
-    CHECK(steps[0].target == p.package.input(2));
+    CHECK(steps[0].target == nullptr);
     CHECK(steps[0].list_key == -1);
     CHECK(steps[0].seconds == 0.0);
 
     CHECK(steps[1].location == nullptr);
     CHECK(steps[1].list_key == 3);
-    CHECK(steps[1].target == p.package.input(7));
+    CHECK(steps[1].target == nullptr);
 
     // Only a Wait takes its seconds from a Float, the first one.
     CHECK(steps[2].procedure == ai::Procedure::wait);
@@ -809,6 +810,40 @@ TEST_CASE("a step takes its place, target, object list and seconds from the inpu
     CHECK(steps[3].target == nullptr);
     CHECK(steps[3].list_key == -1);
     CHECK(steps[3].seconds == 0.0);
+
+    CHECK(steps[4].location == p.package.input(1));
+    CHECK(steps[4].target == p.package.input(7));
+}
+
+// The vanilla parameter lists (docs/ai.md): where a procedure keeps its place and its target.
+TEST_CASE("a step takes its place and target from the parameters its procedure keeps them in", "[ai][plan]") {
+    const std::vector<InputSpec> inputs{input(1, "Location"),       input(2, "SingleRef"), input(3, "TargetSelector"),
+                                        input(4, "Int", 1.0F),       input(5, "ObjectList"), input(6, "Location"),
+                                        input(7, "Topic")};
+    Planner p({{.id = 1,
+                .inputs = inputs,
+                .tree = sequence({procedure("Escort", {2, 4, 6}),          // the escorted, followers, destination
+                                  procedure("Escort", {5, 4, 2}),          // a herd; its path start is the place
+                                  procedure("Travel", {2}),                // to a reference ("Player")
+                                  procedure("Shout", {1, 3, 2}),           // place, shout, target
+                                  procedure("ForceGreet", {7, 1, 6}),      // topic, wait place, greet place
+                                  procedure("KeepAnEyeOn", {2, 6, 1}),     // target, area, end area
+                                  procedure("Guard", {1, 3})})}});         // area, suspicious of
+    const auto steps = p.steps();
+    REQUIRE(steps.size() == 7);
+    CHECK(steps[0].target == p.package.input(2));
+    CHECK(steps[0].location == p.package.input(6));
+    CHECK(steps[1].target == nullptr);
+    CHECK(steps[1].list_key == 5);
+    CHECK(steps[1].location == p.package.input(2));
+    CHECK(steps[2].location == p.package.input(2));
+    CHECK(steps[3].location == p.package.input(1));
+    CHECK(steps[3].target == p.package.input(2));
+    CHECK(steps[4].location == p.package.input(1));
+    CHECK(steps[5].target == p.package.input(2));
+    CHECK(steps[5].location == p.package.input(6));
+    CHECK(steps[6].location == p.package.input(1));
+    CHECK(steps[6].target == p.package.input(3));
 }
 
 TEST_CASE("a step reads the package's inputs before its template's", "[ai][plan]") {

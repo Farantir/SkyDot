@@ -95,6 +95,8 @@ public:
     void set_seed(std::int64_t seed);
     /// Facing about +Y, radians, as `SkydotPlayer.set_look` takes it.
     void face(double yaw);
+    /// Turn towards `yaw` (as `face`) at the turn rate, for `delta` seconds; true once facing it.
+    bool turn_to(double yaw, double delta);
 
     /// Where clips and stances come from (the builder's asset cache).
     void set_clip_source(ClipSource clips, StanceSource stances) {
