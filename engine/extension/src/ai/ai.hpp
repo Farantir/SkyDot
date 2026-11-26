@@ -192,6 +192,18 @@ public:
     std::int64_t get_reaction(std::int64_t a, std::int64_t b);
     /// 0 not in combat, 1 combat, 2 searching.
     std::int64_t get_combat_state(std::int64_t ref);
+    /// `attacker` begins an attack that lasts `seconds`: each actor fighting it within reach may raise its
+    /// block for that long (combat_ai::raises_block, its combat style's defensive mult). It plays its block
+    /// idle, IsBlocking holds and combat_block says so. True if one did.
+    bool on_attack_started(std::int64_t attacker, bool power, double seconds);
+    /// Scales every block chance (1, the default, is the game's; a test raises it to see a block soon).
+    void set_block_chance_scale(double v) { block_chance_scale_ = v; }
+    double get_block_chance_scale() const { return block_chance_scale_; }
+    /// Whether `ref` holds its block up now.
+    bool is_blocking(std::int64_t ref) const;
+    /// Whether `ref` refuses to talk to the player: in combat, or it would attack him
+    /// (combat_ai::refuses_talk). False for an actor the AI does not know.
+    bool refuses_talk(std::int64_t ref);
 
 protected:
     static void _bind_methods();
@@ -255,6 +267,9 @@ private:
         std::uint32_t afraid_of{};       ///< The fear caster it flees from; 0 none.
         double stagger{};                ///< Seconds its AI still pauses for a stagger clip.
         bool ranged{};                   ///< Fights with its bow
+        bool block_up{};                 ///< Its block is raised (IsBlocking).
+        double block{};                  ///< Seconds it stays up.
+        double defensive{0.5};           ///< CSTY defensive mult (block chance)
         bool was_wander{};
         int circle{1};                   ///< Which way it circles
         double reach{};                  ///< Game units, from its weapon
@@ -477,6 +492,10 @@ private:
     std::uint8_t value_of(std::uint32_t ref, const char* actor_value) const;
     void combat_walk(Mind& m, SkydotActor& actor, const godot::Vector3& skyrim_point, bool run);
     void melee_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to);
+    /// The block goes down (IsBlocking off, combat_block false); nothing if it is not up.
+    void lower_block(Mind& m);
+    /// The reach of `ref`'s weapon in hand (or its race's unarmed reach), game units.
+    double reach_of(std::uint32_t ref);
     void ranged_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los, bool airborne = false);
     void flee_tick(Mind& m, SkydotActor& actor, const godot::Vector3& from);
     /// A mage's turn (magic_choice.hpp): true if it cast, walked for a spell or waits for one; false
@@ -522,6 +541,7 @@ private:
     godot::Ref<SkydotWorld> world_;
     godot::Ref<godot::RefCounted> papyrus_;
     SkydotPapyrus* vm_{};
+    double block_chance_scale_ = 1.0;
     ai::Clock clock_;
     double time_scale_{TIME_SCALE};
     bool drive_{true};

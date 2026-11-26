@@ -364,6 +364,32 @@ func _in_front_of_player(attacker: int, fallback: Vector3) -> bool:
 	return rad_to_deg(forward.angle_to(from)) <= cone
 
 
+## Whether `attacker` stands within fCombatHitConeAngle of where the actor `target` faces (flat).
+func _in_front_of_actor(target: int, attacker: int, fallback: Vector3) -> bool:
+	var node := _world.find_ref_node(target) as Node3D
+	if node == null:
+		return false
+	var from_node := _world.find_ref_node(attacker) as Node3D
+	var at: Vector3 = _feet.call() if attacker == PLAYER_REF else (from_node.global_position if from_node != null else fallback)
+	var from := at - node.global_position
+	var forward := -node.global_transform.basis.z
+	from.y = 0.0
+	forward.y = 0.0
+	if from.length() < 0.001 or forward.length() < 0.001:
+		return true
+	return rad_to_deg(forward.angle_to(from)) <= _world.get_gmst_float(GMST_HIT_CONE, HIT_CONE_FALLBACK)
+
+
+## Seconds the attack under way by `attacker` (the player or an NPC) lasts; 0 if none.
+func attack_seconds(attacker: int) -> float:
+	if attacker == PLAYER_REF:
+		return 0.0 if _attack.is_empty() else float(_attack["length"]) / float(_attack["speed"])
+	for a in _npc_attacks:
+		if int(a["attacker"]) == attacker:
+			return float(a["length"]) / float(a["speed"])
+	return 0.0
+
+
 ## Begin an attack now: a power attack, or the next light one (right and left
 ## in turn). `left` picks the hand of a light attack. False if the weapon is
 ## not drawn or an attack is still too early to follow.
@@ -1170,6 +1196,8 @@ func _deliver(attacker: int, target: int, weapon: int, extra: int, event: String
 	_sync_block()
 	if target == PLAYER_REF and attacker != PLAYER_REF and is_blocking() and _in_front_of_player(attacker, point):
 		flags |= SkydotPapyrus.HIT_BLOCKED
+	elif target != PLAYER_REF and _papyrus.is_blocking(target) and _in_front_of_actor(target, attacker, point):
+		flags |= SkydotPapyrus.HIT_BLOCKED  # an NPC's block (the AI raised it): the same rules as the player's
 	var result := rules.hit(attacker, target, weapon, extra, event, flags, ammo)
 	if attacker == PLAYER_REF:
 		# Spending an enchantment's charge or a poison moves the weapon to a new unit (ItemExtra):

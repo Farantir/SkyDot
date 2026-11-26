@@ -153,6 +153,61 @@ TEST_CASE("the ranged step keeps its distance, shoots in sight and closes in oth
     CHECK(ranged_step(in) == RangedStep::switch_to_melee);
 }
 
+TEST_CASE("a bow and a melee weapon swap with a band between the two edges", "[combat][ai]") {
+    // csHumanMissile scores ranged 3.2, melee 0.83.
+    GearInputs in{.has_bow = true, .has_melee = true, .ranged = false, .distance = 1000.0,
+                  .melee_score = 0.83, .ranged_score = 3.2};
+    CHECK(fights_ranged(in));                 // far: the bow
+    in.ranged = true;
+    in.distance = 300.0;
+    CHECK(fights_ranged(in));                 // the bow is kept down to 256
+    in.distance = 250.0;
+    CHECK_FALSE(fights_ranged(in));           // inside it: the melee weapon
+    in.ranged = false;
+    in.distance = 300.0;
+    CHECK_FALSE(fights_ranged(in));           // the melee weapon is kept up to 256 x 1.25 = 320
+    in.distance = 330.0;
+    CHECK(fights_ranged(in));
+    // A melee style with a bow in its pack keeps its blade on the ground.
+    in.melee_score = 1.0;
+    in.ranged_score = 1.0;
+    CHECK_FALSE(fights_ranged(in));
+    in.target_airborne = true;
+    CHECK(fights_ranged(in));
+    in = {.has_bow = true, .has_melee = false, .distance = 50.0};
+    CHECK(fights_ranged(in));                 // only a bow
+    in = {.has_bow = false, .has_melee = true, .ranged = true, .distance = 5000.0};
+    CHECK_FALSE(fights_ranged(in));
+}
+
+TEST_CASE("a block is raised by the combat style's defensive mult, less without a shield", "[combat][ai]") {
+    CHECK(block_chance(true, 0.65, 0.25) == 0.65);          // csHumanBoss1H
+    CHECK(block_chance(false, 0.65, 0.25) == 0.65 * 0.25);  // its weapon alone
+    CHECK(block_chance(true, 1.5, 0.25) == 1.0);
+    BlockInputs in{.able = true, .shield = true, .distance = 100.0, .attacker_reach = 100.0,
+                   .defensive_mult = 0.65, .weapon_mult = 0.25, .roll = 0.6};
+    CHECK(raises_block(in));
+    in.roll = 0.7;
+    CHECK_FALSE(raises_block(in));
+    in.roll = 0.1;
+    in.shield = false;
+    CHECK(raises_block(in));                  // 0.1 < 0.1625
+    in.distance = 160.0;
+    CHECK_FALSE(raises_block(in));            // beyond 1.5 x reach
+    in.distance = 100.0;
+    in.able = false;
+    CHECK_FALSE(raises_block(in));
+}
+
+TEST_CASE("an actor in combat or hostile to the player does not talk", "[combat][ai]") {
+    CHECK_FALSE(refuses_talk(false, 0, Reaction::neutral));
+    CHECK_FALSE(refuses_talk(false, 1, Reaction::neutral));  // aggressive: enemies only
+    CHECK(refuses_talk(false, 1, Reaction::enemy));
+    CHECK(refuses_talk(false, 2, Reaction::neutral));        // a bandit
+    CHECK(refuses_talk(false, 3, Reaction::friend_));        // frenzied
+    CHECK(refuses_talk(true, 0, Reaction::friend_));         // fighting someone else
+}
+
 // ---- magic ----
 
 TEST_CASE("held magic picks the mode: paralysis, then fear, then calm", "[combat][ai][magic]") {

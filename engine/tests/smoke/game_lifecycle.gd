@@ -9,7 +9,8 @@
 # still to leave the bow (Combat._shots), a paralysed bandit (Corpses._paralysed, is_down).
 # After it: no projectile node of before is alive, Combat and Corpses hold nothing of before,
 # the bandit is not paralysed or down, and for 5 s no hit with an arrow and no arrow from the
-# archer lands (after the load he has no bow: the save is from before he got it).
+# archer lands (after the load he has no bow: the save is from before he got it; the cell's
+# own archer may shoot).
 #
 # Not staged: a melee attack under way (Combat._npc_attacks): the only melee attacker in the
 # cell is the paralysed bandit, so the field is checked empty after the load but was not
@@ -180,9 +181,12 @@ func _run(pack_dir: String) -> void:
 
 	# And nothing of the old fight lands afterwards.
 	await _frames(300)
-	var late := _hits.slice(old_hits).filter(func(h: Dictionary) -> bool: return h["result"].get("ammo", 0) == IRON_ARROW)
-	expect(late.is_empty(), "no hit of an arrow after the load: %s" % [late])
-	expect(_arrows.size() == old_arrow_count, "no arrow leaves a bow after the load")
+	# (The cell's own archer 0x39FE2, a bow and a blade, may shoot after the load: only the staged archer counts.)
+	var late := _hits.slice(old_hits).filter(func(h: Dictionary) -> bool:
+		return h["result"].get("ammo", 0) == IRON_ARROW and h["result"].get("attacker", 0) == archer_ref)
+	expect(late.is_empty(), "no hit of an arrow from the archer after the load: %s" % [late])
+	var late_arrows := _arrows.slice(old_arrow_count).filter(func(a: Array) -> bool: return a[0] == archer_ref)
+	expect(late_arrows.is_empty(), "no arrow leaves the archer's bow after the load: %s" % [late_arrows])
 	expect(not corpses.is_down(BANDIT), "the bandit still stands after 5 s")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE))
 	print("smoke_game_lifecycle: failures=%d" % failures)

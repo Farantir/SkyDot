@@ -386,6 +386,12 @@ func _make_game_nodes() -> void:
 	combat.projectiles = projectiles
 	combat.weapon_state_changed.connect(weapon_state_changed.emit)
 	combat.attack_started.connect(attack_started.emit)
+	if ai != null:
+		# A swing that begins may meet a raised block (the AI decides, AttackRules applies it).
+		combat.attack_started.connect(func(_clip: String, power: bool) -> void:
+			ai.on_attack_started(Combat.PLAYER_REF, power, combat.attack_seconds(Combat.PLAYER_REF)))
+		combat.npc_attack_started.connect(func(attacker: int, _clip: String, power: bool) -> void:
+			ai.on_attack_started(attacker, power, combat.attack_seconds(attacker)))
 	combat.hit_landed.connect(hit_landed.emit)
 	combat.hit_landed.connect(_award_hit)
 	if ai != null:
@@ -1437,6 +1443,9 @@ func ref_name(ref: int) -> String:
 ## False if `ref` cannot talk or a dialogue is open.
 func dialogue_open(ref: int, topic := 0) -> bool:
 	if _talk_speaker != 0 or not papyrus.dialogue_can_talk(ref):
+		return false
+	if ai != null and ai.refuses_talk(ref):
+		print("dialogue: 0x%X is hostile or fighting: no talk" % ref)
 		return false
 	_talk_speaker = ref
 	_begin_talk(papyrus.dialogue_open(ref, topic))

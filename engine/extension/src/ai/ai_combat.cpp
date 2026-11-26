@@ -82,6 +82,8 @@ constexpr double k_aimed_reach = 1500.0;
 constexpr double k_max_reach = 2500.0;
 /// PLACEHOLDER: the radius of a body in game units, taken off distances.
 constexpr double k_body_radius = 21.0;
+/// PLACEHOLDER: seconds a block stays up after the attack it meets.
+constexpr double k_block_linger = 0.3;
 /// PLACEHOLDER: how far it backs off or circles, as game units.
 constexpr double k_fallback_distance = 300.0;
 constexpr double k_keep_distance = 700.0;
@@ -397,7 +399,9 @@ void SkydotAi::read_gear(Mind& m) {
                                                                     : nullptr;
     c.style = {};
     c.weapon_style = {};
+    c.defensive = 0.5;
     if (style != nullptr) {
+        c.defensive = static_cast<double>(style->defensive_mult());
         c.style = {style->offensive_mult(), style->circle_mult(), style->fallback_mult(),
                    style->special_attack_mult()};
         c.weapon_style = {static_cast<double>(style->magic_score_mult()), static_cast<double>(style->melee_score_mult()),
@@ -731,6 +735,7 @@ void SkydotAi::enter_combat(Mind& m, SkydotActor& actor, std::uint32_t target) {
 void SkydotAi::leave_combat(Mind& m, SkydotActor* actor) {
     CombatMind& c = m.combat;
     end_cast(m);
+    lower_block(m);
     if (c.state == 0) {
         return;
     }
@@ -882,6 +887,7 @@ double SkydotAi::stagger(std::int64_t ref_id, double magnitude) {
         length = actor->play_action(clip.get("file", godot::String()), 1.0);
     }
     actor->stop();
+    lower_block(*m);
     m->combat.stagger = length > 0.0 ? length : 1.0;
     std::printf("combat: 0x%X staggers (%g)\n", ref, magnitude);
     return m->combat.stagger;
@@ -990,6 +996,14 @@ bool SkydotAi::magic_step(Mind& m, SkydotActor& actor, const combat_ai::MagicSta
     if (c.stagger > 0.0) {
         c.stagger -= seconds;
         return true; // the clip plays, the AI waits
+    }
+    // A raised block holds for the attack it meets.
+    if (c.block_up) {
+        c.block -= seconds;
+        if (c.block > 0.0) {
+            return true;
+        }
+        lower_block(m);
     }
     // Fear: it flees from the caster while the fear lasts.
     if (mode == combat_ai::MagicMode::afraid) {
@@ -1126,6 +1140,113 @@ void SkydotAi::ranged_tick(Mind& m, SkydotActor& actor, double distance, const V
         }
         break;
     }
+}
+
+// ---- blocking -------------------------------------------------------------------
+
+double SkydotAi::reach_of(std::uint32_t ref) {
+    const double combat_distance =
+        static_cast<double>(world_->data().gmst_float("fCombatDistance", static_cast<float>(k_combat_distance)));
+    const auto form = static_cast<std::int64_t>(vm_->equipment(ref).get("right", 0));
+    const godot::Dictionary weapon = form != 0 ? world_->get_weapon(form) : godot::Dictionary();
+    if (!weapon.is_empty()) {
+        return static_cast<double>(weapon.get("reach", 1.0)) * combat_distance;
+    }
+    if (ref == k_player_ref) {
+        return k_unarmed_reach;
+    }
+    const godot::Dictionary race = world_->get_race(static_cast<std::int64_t>(plan_of(ref).get("race", 0)));
+    return static_cast<double>(race.get("unarmed_reach", k_unarmed_reach));
+}
+
+bool SkydotAi::on_attack_started(std::int64_t attacker_id, bool power, double seconds) {
+    const auto attacker = static_cast<std::uint32_t>(attacker_id);
+    const auto from = processing_ && combat_enabled_ && vm_ != nullptr ? position_of(attacker) : std::nullopt;
+    if (!from) {
+        return false;
+    }
+    overrides_cache_.clear();
+    const double reach = reach_of(attacker);
+    const double weapon_mult = static_cast<double>(world_->data().gmst_float("fCombatBlockChanceWeaponMult", 0.25F));
+    bool any = false;
+    for (const std::uint32_t ref : attached_) {
+        Mind* m = mind(ref);
+        SkydotActor* actor = m != nullptr ? node_of(*m) : nullptr;
+        if (actor == nullptr || ref == attacker || m->combat.state != 1 || m->combat.target != attacker ||
+            m->combat.block_up || !alive(ref)) {
+            continue;
+        }
+        CombatMind& c = m->combat;
+        const godot::Dictionary equipment = vm_->equipment(ref);
+        const auto left = static_cast<std::int64_t>(equipment.get("left", 0));
+        const bool shield = left != 0 && godot::String(vm_->item_info(left).get("category", "")) == "armor";
+        const auto right = static_cast<std::int64_t>(equipment.get("right", 0));
+        const godot::Dictionary weapon = right != 0 ? world_->get_weapon(right) : godot::Dictionary();
+        const auto type = static_cast<std::int64_t>(weapon.get("weapon_type", 0));
+        const bool blade = type >= 1 && type <= 6;
+        combat_ai::BlockInputs in;
+        in.able = (shield || blade) && !c.ranged && !c.fleeing && c.stagger <= 0.0 && !c.cast.active &&
+                  !c.shout.active && !actor->is_acting() && !actor->is_flying() && !overrides_of(ref).paralyzed;
+        in.shield = shield;
+        in.distance = flat(m->last, *from) - 2.0 * k_body_radius;
+        in.attacker_reach = reach;
+        in.defensive_mult = c.defensive * block_chance_scale_;
+        in.weapon_mult = weapon_mult;
+        in.roll = roll(*m);
+        if (!combat_ai::raises_block(in)) {
+            continue;
+        }
+        // The block idle of its set: the shield's, else the weapon's (1hm, 2hm, 2hw).
+        const char* stem = shield ? "shd_blockidle" : type <= 4 ? "1hm_blockidle" : type == 5 ? "2hm_blockidle"
+                                                                                            : "2hw_blockidle";
+        const godot::Dictionary loco = world_->get_locomotion(plan_of(ref).get("behaviour", godot::String()));
+        const godot::Dictionary clip =
+            godot::Dictionary(loco.get("clips", godot::Dictionary())).get(stem, godot::Dictionary());
+        const godot::String file = clip.get("file", godot::String());
+        const double played = file.is_empty() ? 0.0 : actor->play_action(file, 1.0);
+        actor->stop();
+        c.block = std::max(seconds, 0.0) + k_block_linger;
+        c.block_up = true;
+        vm_->set_blocking(ref, true);
+        any = true;
+        std::printf("combat: 0x%X blocks 0x%X's %s attack (%s%s)\n", ref, attacker, power ? "power" : "light",
+                    stem, played > 0.0 ? "" : ", no clip");
+        emit_signal("combat_block", static_cast<std::int64_t>(ref), true);
+    }
+    return any;
+}
+
+void SkydotAi::lower_block(Mind& m) {
+    if (!m.combat.block_up) {
+        return;
+    }
+    m.combat.block_up = false;
+    m.combat.block = 0.0;
+    if (vm_ != nullptr) {
+        vm_->set_blocking(m.ref, false);
+    }
+    emit_signal("combat_block", static_cast<std::int64_t>(m.ref), false);
+}
+
+bool SkydotAi::is_blocking(std::int64_t ref) const {
+    const auto it = minds_.find(static_cast<std::uint32_t>(ref));
+    return it != minds_.end() && it->second.combat.block_up;
+}
+
+bool SkydotAi::refuses_talk(std::int64_t ref_id) {
+    const auto ref = static_cast<std::uint32_t>(ref_id);
+    const Mind* m = mind(ref);
+    if (m == nullptr || vm_ == nullptr) {
+        return false;
+    }
+    overrides_cache_.clear();
+    const combat_ai::MagicState magic = magic_state(ref);
+    if (magic.calm) {
+        return m->combat.state != 0;
+    }
+    return combat_ai::refuses_talk(
+        m->combat.state != 0, combat_ai::aggression_under(value_of(ref, "Aggression"), magic),
+        combat_ai::reaction_under(magic, reaction_of(ref, k_player_ref)));
 }
 
 void SkydotAi::flee_tick(Mind& m, SkydotActor& actor, const Vector3& from) {
@@ -1357,7 +1478,6 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
     }
     if (airborne) {
         if (c.has_bow) {
-            c.ranged = true;
             distance = static_cast<double>((*at - m.last).length());
         } else {
             constexpr double k_wait_under = 1024.0; // PLACEHOLDER: a melee fighter stops this far (flat) from a flier
@@ -1376,7 +1496,18 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
     if (mage_tick(m, actor, distance, *at, in_sight)) {
         return true;
     }
-    if (c.ranged || (c.has_bow && !c.has_melee)) {
+    combat_ai::GearInputs gear{.has_bow = c.has_bow, .has_melee = c.has_melee, .ranged = c.ranged,
+                               .distance = distance, .target_airborne = airborne};
+    gear.keep_mult = static_cast<double>(
+        world_->data().gmst_float("fCombatCurrentWeaponAbsoluteMaxRangeMult", static_cast<float>(gear.keep_mult)));
+    gear.melee_score = c.weapon_style.melee;
+    gear.ranged_score = c.weapon_style.ranged;
+    if (const bool ranged = combat_ai::fights_ranged(gear); ranged != c.ranged) {
+        std::printf("combat: 0x%X takes its %s at %.0f\n", m.ref, ranged ? "bow" : "melee weapon", distance);
+        c.ranged = ranged;
+        c.gear_age = 1e9; // the reach of the other weapon
+    }
+    if (c.ranged) {
         ranged_tick(m, actor, distance, *at, in_sight, airborne);
     } else {
         melee_tick(m, actor, distance, *at);

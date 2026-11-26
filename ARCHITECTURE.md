@@ -1510,7 +1510,8 @@ tempering) and `land_hit` damages Health, keeps the killer, applies the
 weapon's poison and enchantment (`hit_magic`), logs the hit, checks the
 player's death and sends `OnHit` and the death. The AI's decision of when to
 attack and whether lightly or with power (`ai_combat.cpp` `melee_step` and
-`ranged_step`) stays in C++: it is AI-internal tactics run per tick in
+`ranged_step`), which weapon (`fights_ranged`) and whether to block
+(`raises_block`; the blocked hit is `AttackRules`') stays in C++: it is AI-internal tactics run per tick in
 `SkydotAi`, and `CombatHooks` is AI state for Papyrus natives. `Combat` and
 `GameSession.kill_actor` call the session's one `AttackRules`; `hit` also puts `weapon_type`, `weapon_base`,
 `heavy_pieces`, `light_pieces` and `ranged` (`skill_use_facts`) in its result for `Progression.combat_uses`; it holds no

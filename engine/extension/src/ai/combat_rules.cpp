@@ -158,6 +158,28 @@ RangedStep ranged_step(const RangedInputs& in) noexcept {
     return RangedStep::shoot;
 }
 
+bool fights_ranged(const GearInputs& in) noexcept {
+    if (!in.has_bow) {
+        return false;
+    }
+    if (!in.has_melee || in.target_airborne) {
+        return true;
+    }
+    if (in.ranged) {
+        return in.distance >= in.melee_distance;
+    }
+    return in.ranged_score > in.melee_score && in.distance > in.melee_distance * in.keep_mult;
+}
+
+double block_chance(bool shield, double defensive_mult, double weapon_mult) noexcept {
+    return std::clamp(defensive_mult * (shield ? 1.0 : weapon_mult), 0.0, 1.0);
+}
+
+bool raises_block(const BlockInputs& in) noexcept {
+    return in.able && in.distance <= in.attacker_reach * k_block_reach_margin &&
+           in.roll < block_chance(in.shield, in.defensive_mult, in.weapon_mult);
+}
+
 MagicMode magic_mode(const MagicState& state) noexcept {
     if (state.paralyzed) {
         return MagicMode::frozen;

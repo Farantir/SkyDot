@@ -163,6 +163,34 @@ before the player first arrives. Sven guards Riverwood all day
 (SvenRiverwoodIntroPatrol, until MQ102 stage 50 or the Riverwood intro
 scene's stage 10 is done); `--set-stage MQ102:50` lets him go about his day.
 
+## Combat: blocking, weapon choice, talk (`ai_combat.cpp`, `combat_rules.hpp`)
+
+- Blocking. When an attack begins (`Combat.attack_started` for the player,
+  `npc_attack_started` for an actor), `SkydotAi.on_attack_started` lets each
+  actor fighting the attacker decide: it must be in melee with a shield or a
+  melee weapon, not swinging, casting, shouting, fleeing or staggered, and
+  within 1.5x the attacker's reach (placeholder). The chance is the combat
+  style's defensive mult (CSTY CSGD), times fCombatBlockChanceWeaponMult (0.25)
+  without a shield; that reading of both is assumed. The block stays up for
+  the attack's clip plus 0.3 s (placeholder), plays `shd_blockidle` (shield) or
+  the weapon set's `*_blockidle` once, sets IsBlocking (`SkydotPapyrus.set_blocking`)
+  and emits `combat_block(ref, up)`. `Combat` flags a hit on a blocking actor
+  from within fCombatHitConeAngle of its facing as blocked, and `AttackRules`
+  reduces it as for the player (Block skill, shield, Stamina, power attack stagger).
+  A stagger lowers the block. `block_chance_scale` (1) is for tests.
+- Bow and melee weapon. An actor with both takes the bow beyond 256 x 1.25
+  (fCombatCurrentWeaponAbsoluteMaxRangeMult, read as the stretch of the weapon
+  in hand) if its style scores ranged above melee, and keeps the bow down to
+  256 (placeholder), so it does not flip at one edge. Only a bow, or a flying
+  target: the bow.
+- Talk. An actor in combat, or one whose aggression and reaction would start a
+  fight with the player (`combat_ai::refuses_talk`; calm counts as not hostile),
+  refuses `GameSession.dialogue_open`: activating it says nothing, and its
+  ForceGreet opens nothing.
+- `sse_combat_block` (SE pack): the bandit in BleakFallsBarrow01 with an Iron
+  Shield blocks a player's swing, which does 50 % of an unblocked one; he does
+  not talk while fighting.
+
 ## Guesses to check against the game
 
 - The game starts on a Morndas (`GetDayOfWeek` in game at the start).

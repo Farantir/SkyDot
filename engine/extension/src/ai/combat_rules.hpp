@@ -132,6 +132,53 @@ struct RangedInputs {
 /// otherwise shoot. Against an airborne target only approach or shoot.
 [[nodiscard]] RangedStep ranged_step(const RangedInputs& in) noexcept;
 
+/// Which weapon an actor with a bow fights with: `ranged` now, the next choice from it.
+struct GearInputs {
+    bool has_bow{};
+    bool has_melee{};
+    bool ranged{};            ///< It fights with the bow now.
+    double distance{};        ///< Game units (3D against an airborne target).
+    bool target_airborne{};
+    double melee_distance = 256.0; ///< PLACEHOLDER, as RangedInputs.
+    /// fCombatCurrentWeaponAbsoluteMaxRangeMult (1.25 in Skyrim.esm), read as the stretch of the weapon in
+    /// hand's range: melee stays drawn up to melee_distance x this (the hysteresis band; assumed reading).
+    double keep_mult = 1.25;
+    double melee_score = 0.5;  ///< CSTY melee score mult
+    double ranged_score = 0.5; ///< CSTY ranged score mult
+};
+
+/// The bow when it has no melee weapon or the target flies; with both, a bow in hand is kept beyond
+/// melee_distance, a melee weapon in hand gives way to the bow only beyond melee_distance x keep_mult and
+/// only for a style that scores ranged above melee (so the swap does not flip at one edge).
+[[nodiscard]] bool fights_ranged(const GearInputs& in) noexcept;
+
+/// Whether an actor raises its block against an attack that starts now (its combat target winds up).
+struct BlockInputs {
+    bool able{};            ///< In melee with a shield or a melee weapon, not shooting, casting, fleeing or staggered.
+    bool shield{};          ///< A shield in the left hand (else the weapon blocks).
+    double distance{};      ///< To the attacker's body, game units.
+    double attacker_reach{}; ///< Game units.
+    double defensive_mult = 0.5; ///< CSTY CSGD defensive mult
+    double weapon_mult = 0.25;   ///< fCombatBlockChanceWeaponMult (0.25 in Skyrim.esm)
+    double roll{};          ///< A die in [0, 1).
+};
+
+/// PLACEHOLDER: an attack counts as a threat within this many times the attacker's reach.
+inline constexpr double k_block_reach_margin = 1.5;
+
+/// The chance to block an attack: the defensive mult, times the weapon mult without a shield (assumed
+/// reading of the CSTY and GMST; clamped to [0, 1]).
+[[nodiscard]] double block_chance(bool shield, double defensive_mult, double weapon_mult) noexcept;
+
+/// Able, the attacker within k_block_reach_margin x its reach, and the die under block_chance.
+[[nodiscard]] bool raises_block(const BlockInputs& in) noexcept;
+
+/// An actor in combat (with anyone), or one that would start a fight with the player at its aggression
+/// and reaction, does not talk: activating it says nothing and it greets no one.
+[[nodiscard]] inline bool refuses_talk(bool in_combat, std::uint8_t aggression, Reaction to_player) noexcept {
+    return in_combat || starts_combat(aggression, to_player);
+}
+
 // ---- magic (step 7a-4; UESP Skyrim:Calm, Fear, Frenzy, Paralysis, Invisibility, Summon Creature) ----
 
 /// The held magic on an actor as the rules read it (SkydotAi fills it from magic::Overrides).

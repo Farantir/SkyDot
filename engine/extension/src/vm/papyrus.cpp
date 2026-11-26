@@ -101,6 +101,7 @@ void SkydotPapyrus::_bind_methods() {
                                 DEFVAL(-1));
     godot::ClassDB::bind_method(D_METHOD("spell_cost", "caster", "spell"), &SkydotPapyrus::spell_cost);
     godot::ClassDB::bind_method(D_METHOD("set_blocking", "actor", "blocking"), &SkydotPapyrus::set_blocking);
+    godot::ClassDB::bind_method(D_METHOD("is_blocking", "actor"), &SkydotPapyrus::is_blocking);
     godot::ClassDB::bind_method(D_METHOD("spend_magicka", "caster", "amount"), &SkydotPapyrus::spend_magicka);
     godot::ClassDB::bind_method(D_METHOD("apply_item_effects", "actor", "form", "extra"),
                                 &SkydotPapyrus::apply_item_effects, DEFVAL(0));

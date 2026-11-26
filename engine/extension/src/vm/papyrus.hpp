@@ -256,6 +256,7 @@ public:
     double spell_cost(std::int64_t caster, std::int64_t spell);
     /// The game layer tells whether `actor` has its block up now (condition IsBlocking 569).
     void set_blocking(std::int64_t actor, bool blocking);
+    bool is_blocking(std::int64_t actor) const { return blocking_.contains(static_cast<std::uint32_t>(actor)); }
     /// Take magicka from `caster` as damage, so the regeneration delay applies.
     void spend_magicka(std::int64_t caster, double amount);
     /// The effects of an ALCH, INGR or SCRL (or created potion) on `actor`: {ok, reason, effects}.

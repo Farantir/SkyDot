@@ -360,6 +360,12 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_combat_state", "ref"), &SkydotAi::get_combat_state);
     ClassDB::bind_method(D_METHOD("update_fights", "seconds"), &SkydotAi::update_fights);
     ClassDB::bind_method(D_METHOD("get_reaction", "a", "b"), &SkydotAi::get_reaction);
+    ClassDB::bind_method(D_METHOD("on_attack_started", "attacker", "power", "seconds"), &SkydotAi::on_attack_started);
+    ClassDB::bind_method(D_METHOD("is_blocking", "ref"), &SkydotAi::is_blocking);
+    ClassDB::bind_method(D_METHOD("set_block_chance_scale", "value"), &SkydotAi::set_block_chance_scale);
+    ClassDB::bind_method(D_METHOD("get_block_chance_scale"), &SkydotAi::get_block_chance_scale);
+    ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "block_chance_scale"), "set_block_chance_scale", "get_block_chance_scale");
+    ClassDB::bind_method(D_METHOD("refuses_talk", "ref"), &SkydotAi::refuses_talk);
     ADD_SIGNAL(MethodInfo("combat_state_changed", PropertyInfo(Variant::INT, "ref"),
                           PropertyInfo(Variant::INT, "target"), PropertyInfo(Variant::INT, "state")));
     ADD_SIGNAL(MethodInfo("combat_attack", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),
@@ -373,6 +379,8 @@ void SkydotAi::_bind_methods() {
     // words are said: the game layer casts the shout and plays the exhale).
     ADD_SIGNAL(MethodInfo("combat_shout", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),
                           PropertyInfo(Variant::INT, "shout"), PropertyInfo(Variant::STRING, "phase")));
+    // An actor raises its block (up) against its target's attack, or lowers it (ai_combat.cpp on_attack_started).
+    ADD_SIGNAL(MethodInfo("combat_block", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::BOOL, "up")));
     ADD_SIGNAL(MethodInfo("actor_arrived", PropertyInfo(Variant::INT, "ref")));
     ADD_SIGNAL(MethodInfo("actor_left", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "door")));
     // A ForceGreet step is close to the player: open a dialogue with `ref` (saying `topic` first, 0 for the
