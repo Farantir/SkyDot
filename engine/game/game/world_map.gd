@@ -290,6 +290,14 @@ func text(setting: String) -> String:
 	return _session.world.get_gmst_string(setting, FALLBACK.get(setting, ""))
 
 
+## "<NAME> DISCOVERED": the game's sDiscoveredText is only "discovered" (no %s), the name goes in front of it.
+func discovered_text(name: String) -> String:
+	var setting := text("sDiscoveredText")
+	if setting.contains("%s"):
+		return setting.replace("%s", name).to_upper()
+	return ("%s %s" % [name, setting]).strip_edges().to_upper()
+
+
 func save_bytes() -> PackedByteArray:
 	return var_to_bytes({"custom": custom_marker, "exterior": last_exterior})
 

@@ -148,6 +148,9 @@ func _discovery() -> void:
 		expect(_session.papyrus.get_map_marker_flags(c[0]) == 3, "0x%X: discovered at %.0f (flags 3)" % [c[0], c[2]])
 	expect(_session.world_map.refusal(markers[WHITERUN].merged({"flags": 1}, true)) != "",
 		"Whiterun, visible but not discovered, refuses fast travel")
+	# sDiscoveredText is "discovered" without %s: the name goes in front.
+	var shown := _session.world_map.discovered_text("Riverwood")
+	expect(shown == "RIVERWOOD DISCOVERED", "the discovery names the place: " + shown)
 	_discovery_cache()
 
 

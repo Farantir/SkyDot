@@ -300,7 +300,7 @@ func _on_message(text: String, _box: bool) -> void:
 ## A map marker discovered: without the game's HUD (which shows it as a quest update) a note.
 func _on_discovered(_ref: int, name: String) -> void:
 	if not HudGame.available():
-		_note.call(_session.world_map.text("sDiscoveredText").replace("%s", name.to_upper()))
+		_note.call(_session.world_map.discovered_text(name))
 
 
 func _on_fell_through() -> void:

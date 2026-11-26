@@ -68,7 +68,7 @@ func _on_discovered(_ref: int, name: String) -> void:
 	if HudTexts.available():
 		if _texts == null:
 			_texts = HudTexts.new()
-		_texts.show_quest_update(_session.world_map.text("sDiscoveredText").replace("%s", name))
+		_texts.show_quest_update(_session.world_map.discovered_text(name))
 
 
 func _process(_delta: float) -> void:
