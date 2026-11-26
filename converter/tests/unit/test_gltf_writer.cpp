@@ -592,6 +592,36 @@ TEST_CASE("a transform shape inside a bhkRigidBodyT adds to the body's transform
     CHECK_THAT(t.z, Catch::Matchers::WithinAbs(0.0, 1e-6));
 }
 
+TEST_CASE("a transform shape's matrix is Havok's column-major one", "[mesh][nif][collision]") {
+    // As wrdrawbridge01.nif stores its deck boxes: the rotation's columns in 0-2, 4-6, 8-10, the
+    // translation in 12-14. Here a quarter turn about z (x goes to y) and (0, -3.225, -0.086).
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shape("cube", bethconv::test::make_cube());
+    auto box = std::make_unique<nifly::bhkBoxShape>();
+    box->dimensions = nifly::Vector3(1.0f, 1.0f, 1.0f);
+    bethconv::test::NifBuilder::Body body;
+    nifly::Matrix4 m;
+    m[0] = 0.0f;
+    m[1] = 1.0f; // column 0: where x goes
+    m[4] = -1.0f;
+    m[5] = 0.0f; // column 1: where y goes
+    m[13] = -3.225f;
+    m[14] = -0.086f;
+    body.shape_xform = m;
+    builder.add_collision(std::move(box), body);
+
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "bridge.nif");
+    REQUIRE(model.has_value());
+    REQUIRE(model->collision.size() == 1);
+    const auto& t = model->collision[0].transform;
+    CHECK_THAT(t.translation.x, Catch::Matchers::WithinAbs(0.0, 1e-6));
+    CHECK_THAT(t.translation.y, Catch::Matchers::WithinAbs(-3.225, 1e-6));
+    CHECK_THAT(t.translation.z, Catch::Matchers::WithinAbs(-0.086, 1e-6));
+    // The quaternion of a quarter turn about +z: (0, 0, sin 45, cos 45).
+    CHECK_THAT(t.rotation.z, Catch::Matchers::WithinAbs(std::sqrt(0.5), 1e-5));
+    CHECK_THAT(t.rotation.w, Catch::Matchers::WithinAbs(std::sqrt(0.5), 1e-5));
+}
+
 TEST_CASE("compressed-mesh chunks keep the triangle list that follows their strips",
           "[mesh][nif][collision]") {
     bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);

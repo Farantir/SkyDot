@@ -1123,10 +1123,12 @@ private:
                                             : CollisionKind::unsupported;
     }
 
+    /// A Havok hkTransform as stored: column-major, the rotation's columns in 0-2, 4-6, 8-10 and the
+    /// translation in 12-14 (wrdrawbridge01.nif's deck boxes sit 3.225 Havok units out along -y there).
     static nifly::MatTransform mat_transform_of(const nifly::Matrix4& m) {
         nifly::MatTransform t;
-        t.rotation = nifly::Matrix3(m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]);
-        t.translation = nifly::Vector3(m[3], m[7], m[11]);
+        t.rotation = nifly::Matrix3(m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]);
+        t.translation = nifly::Vector3(m[12], m[13], m[14]);
         return t;
     }
 

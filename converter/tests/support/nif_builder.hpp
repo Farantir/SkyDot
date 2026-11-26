@@ -132,6 +132,8 @@ public:
         /// A bhkRigidBodyT with this translation (Havok units), else a
         /// bhkRigidBody.
         std::optional<nifly::Vector3> translation;
+        /// The raw matrix of the bhkConvexTransformShape around the shape (as stored), instead of `offset`.
+        std::optional<nifly::Matrix4> shape_xform;
     };
 
     /// Give `target` (or the root) a bhkCollisionObject whose body holds
@@ -144,13 +146,17 @@ public:
         auto* raw = shape.get();
         auto& header = nif_.GetHeader();
         std::uint32_t shape_index = header.AddBlock(std::move(shape));
-        if (offset) {
+        if (offset || body.shape_xform) {
             auto transform = std::make_unique<nifly::bhkConvexTransformShape>();
             transform->shapeRef.index = shape_index;
-            // nifly keeps the translation in the last column.
-            transform->xform[3] = offset->x;
-            transform->xform[7] = offset->y;
-            transform->xform[11] = offset->z;
+            if (body.shape_xform) {
+                transform->xform = *body.shape_xform;
+            } else {
+                // A Havok transform is column-major: the translation is elements 12-14.
+                transform->xform[12] = offset->x;
+                transform->xform[13] = offset->y;
+                transform->xform[14] = offset->z;
+            }
             shape_index = header.AddBlock(std::move(transform));
         }
         std::unique_ptr<nifly::bhkRigidBody> rigid =
@@ -249,16 +255,16 @@ public:
         std::uint32_t shape_index = header.AddBlock(std::move(shape));
         auto transform = std::make_unique<nifly::bhkTransformShape>();
         transform->shapeRef.index = shape_index;
-        transform->xform[3] = offset.x;
-        transform->xform[7] = offset.y;
-        transform->xform[11] = offset.z;
+        transform->xform[12] = offset.x;
+        transform->xform[13] = offset.y;
+        transform->xform[14] = offset.z;
         shape_index = header.AddBlock(std::move(transform));
         auto phantom = std::make_unique<nifly::bhkSimpleShapePhantom>();
         phantom->shapeRef.index = shape_index;
         phantom->collisionFilter.layer = layer;
-        phantom->transform[3] = phantom_offset.x;
-        phantom->transform[7] = phantom_offset.y;
-        phantom->transform[11] = phantom_offset.z;
+        phantom->transform[12] = phantom_offset.x;
+        phantom->transform[13] = phantom_offset.y;
+        phantom->transform[14] = phantom_offset.z;
         const auto phantom_index = header.AddBlock(std::move(phantom));
         nifly::NiAVObject* owner = target != nullptr ? target : nif_.GetRootNode();
         auto object = std::make_unique<nifly::bhkSPCollisionObject>();
