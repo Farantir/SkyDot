@@ -193,8 +193,16 @@ func _draw_compass(area: Vector2) -> void:
 	var ahead := SkydotWorld.godot_to_skyrim(camera.global_position - camera.global_basis.z) - from
 	var heading := rad_to_deg(atan2(ahead.x, ahead.y))
 	var where: Dictionary = _session.ambience.where.call() if _session.ambience != null else {}
-	_game.draw_compass(self, area, heading, SkydotWorld.godot_to_skyrim(_session.player_feet()), int(where.get("world", 0)),
-		_session.world)
+	var world := int(where.get("world", 0))
+	var custom: Variant = null
+	var flags := Callable()
+	var wm: WorldMap = _session.world_map
+	if wm != null:
+		flags = _session.papyrus.get_map_marker_flags
+		if world > 0 and not wm.custom_marker.is_empty() and int(wm.custom_marker["world"]) == wm.map_world(world):
+			custom = wm.custom_marker["position"]
+	_game.draw_compass(self, area, heading, SkydotWorld.godot_to_skyrim(_session.player_feet()), world,
+		_session.world, custom, flags)
 
 
 ## The rollover as the game draws it (HudTexts).

@@ -121,8 +121,10 @@ func draw_crosshair(canvas: CanvasItem, area: Vector2) -> void:
 
 ## The compass for a player at `position` (game units) facing `heading` (degrees, 0 north, clockwise), with the
 ## map markers of `world` (0 in an interior: no markers).
+## `custom` is the custom marker's position on this world's map (null without one); `flags` gives a map marker's
+## XMRK flags (a marker without "can travel" shows at UndiscoveredMarkers), null takes all as discovered.
 func draw_compass(canvas: CanvasItem, area: Vector2, heading: float, position: Vector3, world: int,
-		world_data: SkydotWorld) -> void:
+		world_data: SkydotWorld, custom: Variant = null, flags: Callable = Callable()) -> void:
 	var holder := UiAssets.instance(SWF, COMPASS_HOLDER)
 	if holder.is_empty():
 		return
@@ -153,16 +155,19 @@ func draw_compass(canvas: CanvasItem, area: Vector2, heading: float, position: V
 	if world <= 0 or world_data == null:
 		return
 	_draw_markers(canvas, compass_xform, rect_x, absf(full_x - zero_x), rect_zero, mask, heading, position, world,
-		world_data)
+		world_data, custom, flags)
 
 
 func _draw_markers(canvas: CanvasItem, compass_xform: Transform2D, rect_x: float, span: float,
-		rect: Dictionary, mask: Dictionary, heading: float, position: Vector3, world: int, world_data: SkydotWorld) -> void:
+		rect: Dictionary, mask: Dictionary, heading: float, position: Vector3, world: int, world_data: SkydotWorld,
+		custom: Variant, flags: Callable) -> void:
 	if _markers_world != world:
 		_markers = world_data.get_map_markers(world)
 		_markers_world = world
 	var marker_id := UiAssets.exported(SWF, "Compass Marker")
 	var locations := UiAssets.label_frame(SWF, marker_id, "LocationMarkers")
+	var undiscovered := UiAssets.label_frame(SWF, marker_id, "UndiscoveredMarkers")
+	var player_set := UiAssets.label_frame(SWF, marker_id, "PlayerSet")
 	var mask_rect := UiDraw.matrix(mask["matrix"]) * UiAssets.bounds(SWF, int(mask["character"]))
 	if span <= 0.0 or marker_id < 0 or locations < 0:
 		return
@@ -175,11 +180,20 @@ func _draw_markers(canvas: CanvasItem, compass_xform: Transform2D, rect_x: float
 	rect_xform.origin.x = rect_x
 	var in_compass := rect_xform * holder  # the marker holder in the compass
 	var max_distance := world_data.get_gmst_float("fHUDCompassLocationMaxDist", 0.0)
+	# [position, frame]: the locations within reach, then the custom marker at any distance.
+	var shown := []
 	for marker: Dictionary in _markers:
 		var at: Vector3 = marker["position"]
-		var offset := Vector2(at.x - position.x, at.y - position.y)
-		if max_distance > 0.0 and offset.length() > max_distance:
+		if max_distance > 0.0 and Vector2(at.x - position.x, at.y - position.y).length() > max_distance:
 			continue
+		var found := not flags.is_valid() or int(flags.call(int(marker["ref"]))) & WorldMap.CAN_TRAVEL != 0
+		var first := locations if found or undiscovered < 0 else undiscovered
+		shown.append([at, first + int(marker["type"]) - 1])
+	if custom is Vector3 and player_set >= 0:
+		shown.append([custom, player_set])
+	for entry: Array in shown:
+		var at: Vector3 = entry[0]
+		var offset := Vector2(at.x - position.x, at.y - position.y)
 		var bearing := fposmod(rad_to_deg(atan2(offset.x, offset.y)), 360.0)
 		var delta := wrapf(bearing - heading, -180.0, 180.0)
 		if absf(delta) > half_degrees:
@@ -190,7 +204,7 @@ func _draw_markers(canvas: CanvasItem, compass_xform: Transform2D, rect_x: float
 		var marker_local := Transform2D(0.0, Vector2(x_holder, 0.0))
 		var clip := ((in_compass * marker_local).affine_inverse() * mask_rect).abs()
 		UiDraw.character(canvas, SWF, marker_id, compass_xform * in_compass * marker_local, Color.WHITE, null,
-			clip, locations + int(marker["type"]) - 1)
+			clip, int(entry[1]))
 
 
 ## A named instance of `sprite` at `frame`: its display entry, empty if none.
