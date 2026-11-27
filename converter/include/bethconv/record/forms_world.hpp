@@ -179,6 +179,10 @@ struct Water {
         static constexpr std::size_t k_sun_sparkle_power = 224;
     };
     Dnam dnam;
+    /// NAM0, NAM1 (xEdit): linear and angular velocity of the water's current.
+    /// 17 of 34 in Skyrim.esm have a linear one; no angular one is set.
+    std::array<float, 3> linear_velocity{};
+    std::array<float, 3> angular_velocity{};
 };
 
 /// VOLI: volumetric lighting of a weather and time of day. In Update.esm only.

@@ -829,6 +829,8 @@ io::ParseResult<GenericBase> parse_generic_base(io::SpanReader& data, const Form
                 }
             } else if (tag == FourCC{"RNAM"} && has_activate_text) {
                 take(failure, read_lstring(body, ctx, type, tag), out.activate_text);
+            } else if (tag == FourCC{"WNAM"} && type == FourCC{"ACTI"}) {
+                take(failure, read_formid(body), out.water_type);
             } else if (tag == FourCC{"MODS"}) {
                 if (out.alternate_textures.empty()) {
                     take(failure, read_verbatim(body), out.alternate_textures);

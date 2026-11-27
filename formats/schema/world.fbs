@@ -377,6 +377,27 @@ table Cell {
     patrol_points: [PatrolPoint];
     /// XCMO (format 50): a MusicType in `music_types`; 0 if none.
     music: uint32;
+    /// Sorted by ref (format 51).
+    water_currents: [WaterCurrent];
+}
+
+/// One entry of REFR XWCU (format 51, xEdit "water current velocities"):
+/// X, Y, Z and a fourth float (0 in every Skyrim.esm entry).
+struct WaterVelocity {
+    x: float;
+    y: float;
+    z: float;
+    w: float;
+}
+
+/// A placed water surface's currents (format 51; REFR XWCN, XWCU on
+/// references of activators with a water type). Skyrim.esm: 128 refs, each
+/// with 3 entries; the first is the water type's linear velocity (NAM0) as
+/// it was when placed, in world axes (rotating the ref does not turn it),
+/// the other two are 0. Units: assumed Havok units (about 1 m) per second.
+table WaterCurrent {
+    ref: uint32 (key);
+    velocities: [WaterVelocity];
 }
 
 /// REFR XMRK (format 43): a map marker, the reference that stands for a
@@ -530,6 +551,11 @@ table Base {
     /// Deprecated in format 39, no longer written: the skill follows from
     /// the recipe and `bench_type`.
     bench_skill: ubyte (deprecated);
+    /// ACTI WNAM (format 51): a Water in `waters`, 0 if none. Such an
+    /// activator is a placed water surface (streams, ponds, waterfalls'
+    /// pools): its model has a BSWaterShaderProperty shape and a water-layer
+    /// phantom box under the surface (layer 11).
+    water: uint32;
 }
 
 /// What a plant or tree gives (format 29; FLOR and TREE).
@@ -997,6 +1023,11 @@ table Water {
     depth_normals: float;
     /// DNAM 220.
     depth_specular: float;
+    /// NAM0, NAM1 (format 51; xEdit): the current's linear and angular
+    /// velocity, world axes. Cell water of this type flows at it (assumed);
+    /// placed water has its own copy in Cell.water_currents.
+    linear_velocity: Vec3f;
+    angular_velocity: Vec3f;
 }
 
 struct ClimateWeather {

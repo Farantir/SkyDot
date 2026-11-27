@@ -613,6 +613,11 @@ io::ParseResult<Water> parse_water(io::SpanReader& data, const FormContext& ctx)
                 std::string path;
                 take(failure, read_zstring(body), path);
                 out.noise.push_back(std::move(path));
+            } else if (field.type == FourCC{"NAM0"} || field.type == FourCC{"NAM1"}) {
+                auto& v = field.type == FourCC{"NAM0"} ? out.linear_velocity : out.angular_velocity;
+                for (float& f : v) {
+                    take(failure, body.get<float>(), f);
+                }
             } else if (field.type == FourCC{"DNAM"}) {
                 if (body.remaining() >= Water::Dnam::k_size) {
                     const io::SpanReader whole = body;

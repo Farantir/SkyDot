@@ -205,6 +205,10 @@ void EnvironmentCollector::on_water(const record::MergedRecord& merged, io::Span
         out.depth_normals = d.depth_normals;
         out.depth_specular = d.depth_specular;
         out.sun_sparkle_power = d.sun_sparkle_power;
+        const auto& lin = watr->linear_velocity;
+        const auto& ang = watr->angular_velocity;
+        out.linear_velocity = std::make_unique<wfb::Vec3f>(lin[0], lin[1], lin[2]);
+        out.angular_velocity = std::make_unique<wfb::Vec3f>(ang[0], ang[1], ang[2]);
     });
 }
 

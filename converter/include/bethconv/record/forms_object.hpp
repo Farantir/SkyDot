@@ -610,6 +610,7 @@ struct GenericBase {
     std::vector<std::byte> alternate_textures; ///< MODS, kept raw.
     LString name;             ///< FULL
     LString activate_text;    ///< RNAM on ACTI and FLOR.
+    FormId water_type;        ///< ACTI WNAM: the WATR of a placed water surface (691 refs in Skyrim.esm).
     KeywordList keywords;
     Destruction destruction;
     ScriptData scripts;       ///< VMAD, when the caller asks for it.

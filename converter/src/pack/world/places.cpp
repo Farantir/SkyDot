@@ -255,6 +255,14 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
         cell.patrol_points.emplace_back(id, ref->patrol->idle_time,
                                         shared_.global(merged, ref->patrol->idle, failed));
     }
+    if (!ref->water_currents.empty()) {
+        auto current = std::make_unique<wfb::WaterCurrentT>();
+        current->ref = id;
+        for (const auto& v : ref->water_currents) {
+            current->velocities.emplace_back(v[0], v[1], v[2], v[3]);
+        }
+        cell.water_currents.push_back(std::move(current));
+    }
     if (!ref->owner.is_null()) {
         cell.owners.emplace_back(id, shared_.global(merged, ref->owner, failed), ref->owner_rank);
     }
@@ -519,6 +527,7 @@ void PlaceCollector::finish(wfb::WorldT& world) {
         std::ranges::stable_sort(cell.locks, {}, &wfb::Lock::ref);
         std::ranges::stable_sort(cell.owners, {}, &wfb::RefOwner::ref);
         std::ranges::stable_sort(cell.patrol_points, {}, &wfb::PatrolPoint::ref);
+        std::ranges::stable_sort(cell.water_currents, {}, [](const auto& c) { return c->ref; });
         std::ranges::stable_sort(cell.links, {}, &wfb::LinkedRef::ref);
         std::ranges::stable_sort(cell.activate_parents, {}, &wfb::ActivateParent::ref);
         std::ranges::stable_sort(cell.primitives, {}, &wfb::Primitive::ref);

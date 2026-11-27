@@ -351,9 +351,28 @@ void make_land(const TempDir& dir, bool short_vhgt = false) {
         nnam.zstring("Data\\Textures\\Water\\DefaultWater.dds");
         bethconv::test::write_field(watr, "NNAM", nnam);
     }
+    ByteWriter water_nam0;
+    for (const float v : {2.54F, 1.35F, 0.0F}) {
+        water_nam0.f32(v);
+    }
+    bethconv::test::write_field(watr, "NAM0", water_nam0); // linear velocity
+    ByteWriter water_nam1;
+    for (const float v : {0.0F, 0.0F, 0.5F}) {
+        water_nam1.f32(v);
+    }
+    bethconv::test::write_field(watr, "NAM1", water_nam1); // angular velocity
     ByteWriter watrs;
     bethconv::test::write_record(watrs, "WATR", 0x0000'0C02, watr.span());
     top_group(file, "WATR", watrs);
+
+    // A placed water surface: an ACTI with that water type (WNAM).
+    ByteWriter surface = static_payload("Water1024RiverFlowNE", "Water\\Water1024.nif");
+    ByteWriter surface_wnam;
+    surface_wnam.u32(0x0000'0C02);
+    bethconv::test::write_field(surface, "WNAM", surface_wnam);
+    ByteWriter surfaces;
+    bethconv::test::write_record(surfaces, "ACTI", 0x0000'0C30, surface.span());
+    top_group(file, "ACTI", surfaces);
 
     // WTHR: NAM0 colour i*4+t is (i, t, 7); FNAM counts up; one DALC.
     ByteWriter wthr;
@@ -635,6 +654,17 @@ void make_land(const TempDir& dir, bool short_vhgt = false) {
                                  exterior("LandPersistent", 0).span(), 0x400);
     ByteWriter land_group;
     bethconv::test::write_record(land_group, "LAND", 0x0000'0D03, land.span());
+    // Its reference, with currents (XWCN, XWCU: three X, Y, Z, W entries).
+    ByteWriter river = refr_payload(0x0000'0C30, 512.0F, 2.0F);
+    ByteWriter xwcn;
+    xwcn.u32(3);
+    bethconv::test::write_field(river, "XWCN", xwcn);
+    ByteWriter xwcu;
+    for (int i = 0; i < 12; ++i) {
+        xwcu.f32(i == 0 ? 2.54F : i == 1 ? 1.35F : 0.0F);
+    }
+    bethconv::test::write_field(river, "XWCU", xwcu);
+    bethconv::test::write_record(land_group, "REFR", 0x0000'0D20, river.span());
     // NAVM: one triangle linked to itself across edge 2, with a door.
     bethconv::test::NavSpec nav;
     nav.world = world;
@@ -913,6 +943,20 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(river->reflectivity == 20.0F);
     CHECK(river->fog_far == 36.0F);
     CHECK(river->layers[1].wind_speed() == 116.0F);
+    REQUIRE(river->linear_velocity);
+    CHECK(river->linear_velocity->x() == 2.54F);
+    CHECK(river->linear_velocity->y() == 1.35F);
+    CHECK(river->angular_velocity->z() == 0.5F);
+    const auto surface = file->base(0x0000'0C30);
+    REQUIRE(surface.has_value());
+    CHECK(surface->water == 0x0000'0C02);
+    CHECK(surface->model == "meshes/water/water1024.nif");
+    REQUIRE(cell->water_currents.size() == 1);
+    CHECK(cell->water_currents[0]->ref == 0x0000'0D20);
+    REQUIRE(cell->water_currents[0]->velocities.size() == 3);
+    CHECK(cell->water_currents[0]->velocities[0].x() == 2.54F);
+    CHECK(cell->water_currents[0]->velocities[0].y() == 1.35F);
+    CHECK(cell->water_currents[0]->velocities[2].z() == 0.0F);
     CHECK(river->layers[2].uv_scale() == 180.0F);
     CHECK(river->reflection_magnitude == 196.0F);
     CHECK(river->noise_falloff == 96.0F);

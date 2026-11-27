@@ -378,6 +378,12 @@ struct Reference {
     };
     std::optional<Patrol> patrol;
 
+    /// XWCN, XWCU (xEdit: water current velocities; 128 refs of water
+    /// activators in Skyrim.esm, all with a count of 3): X, Y, Z and a fourth
+    /// float per entry. The first entry is the water type's NAM0 linear
+    /// velocity when it was placed (100 of 128 equal it); the rest are 0.
+    std::vector<std::array<float, 4>> water_currents;
+
     /// XRGD/XRGB (ragdoll state saved by the Creation Kit) and editor-only
     /// fields are tallied, not stored.
 

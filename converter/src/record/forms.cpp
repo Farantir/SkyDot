@@ -441,6 +441,18 @@ io::ParseResult<Reference> parse_reference(const RecordHeader& header, io::SpanR
                 }
             } else if (out.patrol && field.type == FourCC{"INAM"}) {
                 take(failure, read_formid(body), out.patrol->idle);
+            } else if (field.type == FourCC{"XWCN"}) {
+                // The count; XWCU's size says the same.
+                skip_bytes(failure, body, body.remaining());
+            } else if (field.type == FourCC{"XWCU"}) {
+                while (!failure && body.remaining() >= 4 * sizeof(float)) {
+                    std::array<float, 4> entry{};
+                    for (float& f : entry) {
+                        take(failure, body.get<float>(), f);
+                    }
+                    out.water_currents.push_back(entry);
+                }
+                skip_bytes(failure, body, body.remaining());
             } else {
                 return false;
             }

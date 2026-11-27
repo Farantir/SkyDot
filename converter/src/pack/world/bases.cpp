@@ -286,6 +286,9 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
     out.flags = flags;
     out.name = name.text;
     out.activate_text = activate_text.text;
+    if (!base->water_type.is_null()) {
+        out.water = shared_.global(merged, base->water_type, failed);
+    }
     out.keywords = shared_.global_all(merged, keywords.keywords, failed);
     if (!destruction.empty()) {
         auto dest = std::make_unique<wfb::DestructionT>();
