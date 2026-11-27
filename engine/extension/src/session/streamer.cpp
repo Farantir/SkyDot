@@ -528,9 +528,9 @@ constexpr std::int64_t k_water_layer = 11;
 /// The flowmap's fill outside the rivers (RG 120, 0: 99.6% of it on dry land in Skyrim.esm's).
 bool flow_fill(const godot::Color& texel) { return texel.get_r8() == 120 && texel.get_g8() == 0; }
 
-/// A flowmap texel's current at full scroll (assumed): RiverWaterFlowNE's NAM0 speed, Havok units
-/// per second.
-constexpr double k_flow_speed = 2.877;
+/// A flowmap texel's current at full scroll, Havok units per second: measured in the game (a swimmer
+/// without input drifts 1.03 m/s in Riverwood's White River, whose texel has full scroll).
+constexpr double k_flow_speed = 1.03;
 
 } // namespace
 
@@ -594,7 +594,7 @@ bool SkydotStreamer::placed_water_at(const Vector3& feet, double& surface, Vecto
 
 // The cell's water type's NAM0; without one, the flowmap the water plane draws (decoration.cpp):
 // RG the direction (2c - 1: x east, y north, as the water shader's rotation), A its scroll, taken
-// as a fraction of k_flow_speed (assumed).
+// as a fraction of k_flow_speed.
 Vector3 SkydotStreamer::cell_current(const CellKey& key, Node3D* water, const Vector3& feet) {
     auto it = cell_currents_.find(key);
     if (it == cell_currents_.end()) {

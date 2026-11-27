@@ -86,17 +86,18 @@ bottom meets a step's edge at a slant and slides off.
   leaving the water. The 0.1 m, the 1 m/s and the water's acceleration are
   assumed, as is diving at any downward pitch (no dead zone is known).
 - The water's current (`water_current`, m/s) is added to the swim velocity,
-  so without input the swimmer drifts at its speed (assumed: how the game's
-  Havok water applies NAM0/XWCU to a character is not known). Not while
+  so without input the swimmer drifts at its speed, as the game does (measured
+  with SkyrimRemote at 0x3AC84: 2.83 m/s against its XWCU's 2.88). Not while
   wading.
 - Breath: `is_underwater` (the eye under the surface) runs `get_breath` (1 to
   0) down over `breath_time`, 20 s, and refills it at once above water
-  (assumed). 20 s is what players measure for vanilla Skyrim;
-  fActorSwimBreathBase defaults to 10 s (CK Settings page, not in the esm), and
-  how fActorSwimBreathMult (0.2) adds the rest is unknown, so the 20 s is
-  fixed (assumed). Out of breath, GameSession takes fActorSwimBreathDamage
-  (0.08) of the Health maximum per second (the CK's "percent of health lost
-  per second"), unless the player's WaterBreathing actor value is above 0.
+  (assumed). Measured in the game (level 1): damage starts after 20 s, the
+  same with Health 400 or Stamina 300; fActorSwimBreathBase is 10,
+  fActorSwimBreathMult 0.2, and how they make 20 s is unknown (a level
+  dependence is unmeasured). Out of breath, GameSession takes
+  fActorSwimBreathDamage (0.08) of the Health maximum per second, unless the
+  player's WaterBreathing actor value is above 0 (measured: 8% a second, less
+  the Health regeneration).
   The LeaveWaterBreath gasp (a voice topic) is not played.
 - `fly` ignores collision; `hold` freezes it (the viewer holds it until the
   cell under it is built).
@@ -142,17 +143,14 @@ it.
 The swimmer's water (`SkydotStreamer.hold_player`): the cell's water plane,
 or a placed water box around the feet whose top is higher (the streamer keeps
 the boxes of every reference it registers, the persistent cell's too, and of
-interiors). Its current, all assumed, in Havok units (1 m) per second, game
-axes turned into Godot's:
+interiors). Its current, in Havok units (1 m) per second, game axes turned
+into Godot's:
 
 - placed water: the reference's XWCU first entry, else its type's NAM0;
 - cell water: its type's NAM0; if that is 0 and the plane draws a flowmap,
-  the texel under the feet: its direction times A times 2.88 (RiverWaterFlowNE's
-  NAM0 speed); the fill texel pushes nothing. The game may not push by
-  flowmaps at all (they may only be looks). Update.esm's 613 RiverWaterFlow
-  cells had various Skyrim.esm types before: 247 none, 154 RiverWaterFlowNE
-  (2.88), the rest 0.16 to 2.9; world.fb keeps only the winner, so one speed
-  stands in for all.
+  the texel under the feet: its direction times A times 1.03 m/s (measured:
+  the game's swimmer drifts 1.03 m/s at Riverwood, (22752, -41248), a full-A
+  texel; that A scales it linearly is assumed); the fill texel pushes nothing.
 
 `SkydotWorld`: `get_ref_water_type`, `get_ref_water_currents` (Vector4s, game
 axes), `get_cell_water_type`, `get_water_velocity` (linear, angular).
