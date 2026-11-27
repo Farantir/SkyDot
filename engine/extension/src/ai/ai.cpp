@@ -13,6 +13,7 @@
 #include "skydot_formats/flags.hpp"
 #include "skydot_formats/units.hpp"
 
+#include <queue>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/callable_method_pointer.hpp>
@@ -875,37 +876,79 @@ const std::vector<std::pair<std::uint32_t, std::uint32_t>>& SkydotAi::doors_of(s
     return out;
 }
 
-std::pair<std::uint32_t, std::uint32_t> SkydotAi::route(std::uint32_t from, std::uint32_t to) {
+std::pair<std::uint32_t, std::uint32_t> SkydotAi::route(std::uint32_t from, const Vector3& from_at, std::uint32_t to,
+                                                       const Vector3& to_at) {
     if (from == to || from == 0 || to == 0) {
         return {0, 0};
     }
-    // Breadth first over spaces; remember the door that reached each.
-    std::map<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>> came; // space -> (previous space, door)
-    std::deque<std::pair<std::uint32_t, int>> open{{from, 0}};
-    came[from] = {0, 0};
-    while (!open.empty()) {
-        const auto [space, depth] = open.front();
-        open.pop_front();
-        if (depth >= k_max_route) {
-            continue;
-        }
+    // Shortest over the doors, counting the straight way to each door and from where it leads to
+    // the next (or to the target): of two doors into a keep, the near one.
+    struct Arrival {
+        double cost;
+        std::uint32_t door;
+        int depth;
+        bool operator>(const Arrival& o) const { return cost > o.cost; }
+    };
+    const auto& doors = world_->data().doors();
+    const auto arrive = [&](std::uint32_t door) {
+        const auto& p = doors.at(door).second->position();
+        return Vector3(p.x(), p.y(), p.z());
+    };
+    std::map<std::uint32_t, std::pair<double, std::uint32_t>> best; // door -> (cost, previous door)
+    std::priority_queue<Arrival, std::vector<Arrival>, std::greater<>> open;
+    const auto relax = [&](std::uint32_t space, const Vector3& at, double cost, std::uint32_t previous, int depth) {
         for (const auto& [door, next] : doors_of(space)) {
-            if (came.contains(next)) {
+            const auto spot = ref_spot(door);
+            if (!spot) {
                 continue;
             }
-            came[next] = {space, door};
-            if (next == to) {
-                std::uint32_t last = door;
-                std::uint32_t first = door;
-                for (auto at = space; at != from; at = came[at].first) {
-                    first = came[at].second;
-                }
-                return {first, last};
+            const double c = cost + static_cast<double>(at.distance_to(spot->position));
+            if (const auto it = best.find(door); it == best.end() || c < it->second.first) {
+                best[door] = {c, previous};
+                open.push({c, door, depth});
             }
-            open.emplace_back(next, depth + 1);
+        }
+    };
+    relax(from, from_at, 0.0, 0, 0);
+    double found = std::numeric_limits<double>::infinity();
+    std::uint32_t last = 0;
+    while (!open.empty()) {
+        const Arrival a = open.top();
+        open.pop();
+        if (a.cost > best[a.door].first || a.cost >= found) {
+            continue;
+        }
+        const auto next = doors_of_target(a.door);
+        if (next == to) {
+            const double c = a.cost + static_cast<double>(arrive(a.door).distance_to(to_at));
+            if (c < found) {
+                found = c;
+                last = a.door;
+            }
+            continue;
+        }
+        if (next != 0 && next != from && a.depth + 1 < k_max_route) {
+            relax(next, arrive(a.door), a.cost, a.door, a.depth + 1);
         }
     }
-    return {0, 0};
+    if (last == 0) {
+        return {0, 0};
+    }
+    std::uint32_t first = last;
+    while (best[first].second != 0) {
+        first = best[first].second;
+    }
+    return {first, last};
+}
+
+std::uint32_t SkydotAi::doors_of_target(std::uint32_t door) const {
+    const auto& doors = world_->data().doors();
+    const auto it = doors.find(door);
+    if (it == doors.end()) {
+        return 0;
+    }
+    const auto dest = doors.find(it->second.second->destination());
+    return dest != doors.end() ? world_->data().cell_space(dest->second.first->id()) : 0;
 }
 
 const std::vector<std::uint32_t>& SkydotAi::packages_of(const Mind& m) {
@@ -1213,7 +1256,7 @@ bool SkydotAi::place_one(std::uint32_t ref, bool through_doors) {
     }
     if (through_doors && spot->space == space_ && now.space != space_) {
         // Coming into the space on screen: through the door it uses.
-        const auto [first, last] = route(now.space, space_);
+        const auto [first, last] = route(now.space, now.position, space_, at);
         (void)first;
         const auto& doors = world_->data().doors();
         if (const auto it = doors.find(last); last != 0 && it != doors.end()) {
@@ -1430,6 +1473,11 @@ void SkydotAi::update(double seconds) {
         }
         const double elapsed = m->idle;
         m->idle = 0.0;
+        // A disabled one is out of the world: no AI (MQ104's tower soldiers, replaced by the quest's).
+        if (vm_ != nullptr && vm_->is_ref_disabled(ref)) {
+            leave_combat(*m, actor);
+            continue;
+        }
         // The VM follows the actors that are on screen (triggers, area effects, cloaks).
         if (vm_ != nullptr && !vm_->is_actor_dead(ref)) {
             vm_->update_actor(ref, m->last);
@@ -1552,7 +1600,7 @@ bool SkydotAi::go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, d
         if (!m.persistent) {
             return true; // Not its own: it does not leave its cell.
         }
-        const auto [first, last] = route(m.space, spot.space);
+        const auto [first, last] = route(m.space, m.last, spot.space, spot.position);
         (void)last;
         const auto at = first != 0 ? ref_spot(first) : std::nullopt;
         if (!at) {

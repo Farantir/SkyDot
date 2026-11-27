@@ -79,11 +79,14 @@ godot::Ref<godot::NavigationMesh> navigation_mesh(const wfb::NavMesh& nav) {
         vertices.set(i, vertex(in->vertices, i));
     }
     mesh->set_vertices(vertices);
+    // Reversed: after the axis swap the triangles turn the other way than Godot's funnel expects,
+    // and with the wrong turn its paths cut straight across holes in the mesh.
     for (const auto* t : in->triangles) {
+        const auto c = corners(*t);
         godot::PackedInt32Array polygon;
-        for (const auto v : corners(*t)) {
-            polygon.push_back(v);
-        }
+        polygon.push_back(c[2]);
+        polygon.push_back(c[1]);
+        polygon.push_back(c[0]);
         mesh->add_polygon(polygon);
     }
     return mesh;

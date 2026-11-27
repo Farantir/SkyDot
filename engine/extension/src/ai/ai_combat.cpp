@@ -8,6 +8,7 @@
 // the target for a while and then goes back to its package. The rules are
 // combat_rules.hpp; this gathers the facts and steers. Log lines `combat: 0xA
 // enters combat with 0xT`, `searches for`, `leaves combat`, `flees from`.
+#include "skydot_formats/flags.hpp"
 #include "ai/ai.hpp"
 
 #include "actors/actor.hpp"
@@ -309,8 +310,8 @@ bool SkydotAi::sees(const Mind& m, const SkydotActor& actor, std::uint32_t targe
     if (!at || !actor.is_inside_tree()) {
         return false;
     }
-    // An invisible target (the player too) is not seen at all.
-    if (target != m.ref && overrides_of(target).invisible) {
+    // An invisible target (the player too) is not seen at all, a disabled one is not there.
+    if (target != m.ref && (overrides_of(target).invisible || (vm_ != nullptr && vm_->is_ref_disabled(target)))) {
         return false;
     }
     const double scale = SkydotWorld::unit_scale();
@@ -353,6 +354,28 @@ bool SkydotAi::sees(const Mind& m, const SkydotActor& actor, std::uint32_t targe
     const auto query = godot::PhysicsRayQueryParameters3D::create(
         eye, head, physics_layer::world | physics_layer::terrain);
     return space->intersect_ray(query).is_empty();
+}
+
+bool SkydotAi::shot_blocked(const SkydotActor& actor, std::uint32_t target, const Vector3& to) const {
+    auto* space = actor.get_world_3d()->get_direct_space_state();
+    if (space == nullptr) {
+        return false;
+    }
+    const Vector3 eye = actor.get_global_position() + Vector3(0, static_cast<float>(actor.get_height() * k_head_fraction), 0);
+    const Vector3 aim = SkydotWorld::skyrim_position(to) + Vector3(0, 1.0F, 0);
+    const auto query = godot::PhysicsRayQueryParameters3D::create(eye, aim, physics_layer::actor | physics_layer::npc);
+    godot::TypedArray<godot::RID> exclude;
+    exclude.push_back(actor.get_rid());
+    query->set_exclude(exclude);
+    const godot::Dictionary hit = space->intersect_ray(query);
+    if (hit.is_empty()) {
+        return false;
+    }
+    const auto* other = godot::Object::cast_to<SkydotActor>(static_cast<godot::Object*>(hit.get("collider", godot::Variant())));
+    if (other == nullptr) {
+        return target != k_player_ref; // the player's body
+    }
+    return !other->has_meta("skydot_ref") || form_of(other->get_meta("skydot_ref")) != target;
 }
 
 // ---- gear ---------------------------------------------------------------------
@@ -1133,6 +1156,10 @@ void SkydotAi::ranged_tick(Mind& m, SkydotActor& actor, double distance, const V
         combat_walk(m, actor, to, true);
         break;
     case combat_ai::RangedStep::shoot:
+        if (shot_blocked(actor, c.target, to)) {
+            combat_walk(m, actor, to, true); // someone in the way: as without a line of sight
+            break;
+        }
         actor.stop();
         if (c.cooldown <= 0.0) {
             c.cooldown = k_shoot_period;
@@ -1298,6 +1325,14 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
                                                             reaction_of(m.ref, c.target))) {
             leave_combat(m, &actor);
         }
+    }
+    if (const auto* pkg = m.package != 0 ? ai::find_package(*root(), m.package) : nullptr;
+        pkg != nullptr && formats::has_flag(pkg->flags(), wfb::PackageFlags::ignore_combat)) {
+        // Its package ignores combat (Hadvar running into Helgen keep past the dragon).
+        if (c.state != 0) {
+            leave_combat(m, &actor);
+        }
+        return false;
     }
     if (c.state == 0) {
         if (magic.calm) {

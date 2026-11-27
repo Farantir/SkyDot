@@ -152,6 +152,9 @@ void SkydotAi::flight_idle(Mind& m, SkydotActor& actor, double seconds) {
         m.think = 1.5;
         choose(m);
     }
+    if (m.package != 0 && !m.steps.empty() && m.step >= m.steps.size()) {
+        steer(m, actor, seconds); // past its last step: repeats, or done and the next package takes over
+    }
     if (m.package != 0 && m.step < m.steps.size() && m.steps[m.step].procedure == ai::Procedure::patrol) {
         if (!m.step_started) {
             m.step_started = true;
@@ -167,6 +170,12 @@ void SkydotAi::flight_idle(Mind& m, SkydotActor& actor, double seconds) {
         }
         flight::Vec3 goal = vec(m.patrol[m.patrol_next].position);
         if (flight::distance_xy(body.pos, goal) < k_patrol_reach) {
+            if (m.patrol_next + 1 >= m.patrol.size() && m.steps[m.step].number(2, 1.0) == 0.0) {
+                // Not repeatable: done at the last point, as on the ground (MQ104's dragon then fights; its
+                // patrol ignores combat).
+                next_step(m);
+                return;
+            }
             m.patrol_next = (m.patrol_next + 1) % m.patrol.size();
             goal = vec(m.patrol[m.patrol_next].position);
         }

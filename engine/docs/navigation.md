@@ -8,10 +8,11 @@ under a node named `Navmesh`. `navigation = false` (viewer:
 
 ## Regions (`nav/navmesh.*`)
 
-- Vertices are converted like everything else (`coordinates.md`); triangles
-  keep their order. Every vanilla triangle faces up (counter-clockwise seen
-  from above, 489 of 2.67 M degenerate), which is the winding Godot's path
-  funnel expects; the reverse gives doubled corner points.
+- Vertices are converted like everything else (`coordinates.md`). Every
+  vanilla triangle faces up (counter-clockwise seen from above, 489 of 2.67 M
+  degenerate); the polygons are added reversed, clockwise, as Godot's path
+  funnel expects. With the vanilla order its paths cut straight across holes
+  in the mesh (2.4 m off it east of Nightcaller Temple, `sse_nav_paths`).
 - Portals: an edge flagged as a link names a triangle in another navmesh,
   nearly always the next cell's. The two edges lie side by side but rarely
   share vertices: across, 97% are within 4 units; vertically they are up to

@@ -389,7 +389,11 @@ private:
     const std::vector<std::pair<std::uint32_t, std::uint32_t>>& doors_of(std::uint32_t space);
     /// The first door on the shortest door route from `from` to `to`, and the
     /// door of the last hop (the one arriving in `to`), or 0s if none.
-    std::pair<std::uint32_t, std::uint32_t> route(std::uint32_t from, std::uint32_t to);
+    /// The first and last door of the shortest way from `from_at` in `from` to `to_at` in `to`.
+    std::pair<std::uint32_t, std::uint32_t> route(std::uint32_t from, const godot::Vector3& from_at, std::uint32_t to,
+                                                  const godot::Vector3& to_at);
+    /// The space a door leads into, 0 for none.
+    std::uint32_t doors_of_target(std::uint32_t door) const;
     /// Lock or unlock the load doors of `spot`'s space (an interior), or near
     /// it outside.
     void set_doors_locked(const Spot& spot, bool locked);
@@ -472,6 +476,8 @@ private:
     /// replaces the sight distance (game units).
     bool sees(const Mind& m, const SkydotActor& actor, std::uint32_t target, bool cone = true,
               double range = 0.0) const;
+    /// Whether an arrow from `actor` at `target` (at Skyrim `to`) hits another actor first.
+    bool shot_blocked(const SkydotActor& actor, std::uint32_t target, const godot::Vector3& to) const;
     /// The attack distance of `m`'s aggro radius (game units), 0 if it has none.
     double aggro_radius(const Mind& m) const;
     combat_ai::Reaction reaction_of(std::uint32_t a, std::uint32_t b);

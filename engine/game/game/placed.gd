@@ -32,6 +32,7 @@ var _noted := {}
 var _deleted := {}  # refs removed before their deferred build ran (cleared when placed again)
 var _generation := 0  # bumped by reset(): timers of an earlier game do nothing
 var _waiting: Array[Array] = []  # [ref, base, cell, position, rotation, scale, disabled]
+var _moved := {}  # ref -> [position, rotation]: moved by a script before its deferred build ran
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, ai: SkydotAi = null) -> void:
@@ -47,6 +48,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, ai: SkydotAi = null) -> v
 func place(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3, scale: float,
 		disabled: bool) -> void:
 	_deleted.erase(ref)
+	_moved.erase(ref)
 	_build.call_deferred(ref, base, cell, position, rotation, scale, disabled)
 
 
@@ -54,6 +56,11 @@ func _build(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3
 		disabled: bool) -> void:
 	if _deleted.has(ref):  # removed in the frame it was placed
 		return
+	if _moved.has(ref):  # moved in the frame it was placed (MQ104 sends its soldiers on to a marker)
+		position = _moved[ref][0]
+		rotation = _moved[ref][1]
+		cell = _papyrus.get_runtime_cell(ref)
+		_moved.erase(ref)
 	if _world.is_actor_base(base):
 		if not _cell_is_built(cell, position):
 			_waiting.append([ref, base, cell, position, rotation, scale, disabled])
@@ -113,6 +120,7 @@ func moved(ref: int, position: Vector3, rotation: Vector3) -> void:
 			_waiting.remove_at(i)
 			_build(entry[0], entry[1], entry[2], entry[3], entry[4], entry[5], entry[6])
 		return
+	_moved[ref] = [position, rotation]
 
 
 ## A cell was built: the actors that waited for one are built if theirs is.
@@ -176,6 +184,7 @@ func reset() -> void:
 	_generation += 1
 	_deleted.clear()
 	_waiting.clear()
+	_moved.clear()
 
 
 ## The place was left: references waiting for their cell stay valid until it is built.

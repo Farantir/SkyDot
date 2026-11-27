@@ -2122,6 +2122,8 @@ enum PackageFlags : uint32 (bit_flags) {
     unlock_doors_at_end,
     once_per_day = 10,
     preferred_speed = 13,
+    ignore_combat = 20,
+    no_combat_alert = 27,
     wear_sleep_outfit = 29
 }
 

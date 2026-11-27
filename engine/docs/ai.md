@@ -105,8 +105,9 @@ The viewer builds one space at a time: an interior, or a worldspace's cells
 around the camera.
 
 - **Built actors** whose step leads to another space walk to the first load
-  door of the shortest door route there (spaces are interiors and
-  worldspaces; up to six doors), go through it (`actor_left`), and are gone
+  door of the shortest door route there (the walked straight-line distance
+  from door to door, spaces are interiors and worldspaces; up to six doors),
+  go through it (`actor_left`), and are gone
   from this space. Doors on the way are not opened; only persistent actors
   leave their space.
 - **Actors not built** are where their package says: `place_actors` (and,
@@ -169,6 +170,13 @@ scene's stage 10 is done); `--set-stage MQ102:50` lets him go about his day.
 
 ## Combat: blocking, weapon choice, talk (`ai_combat.cpp`, `combat_rules.hpp`)
 
+- Ignore Combat (package flag bit 20): while such a package runs the actor
+  neither starts nor keeps a fight (Hadvar running into Helgen keep past the
+  dragon; MQ104's dragon on its patrol). A flying patrol that is not
+  Repeatable ends at its last point like one on the ground, and the next
+  package takes over (MQ104DragonOrbitFort, which fights).
+- A disabled actor (itself or through its enable parent) has no AI and is not
+  seen (MQ104 disables the tower's soldiers and sends the quest's own).
 - Blocking. When an attack begins (`Combat.attack_started` for the player,
   `npc_attack_started` for an actor), `SkydotAi.on_attack_started` lets each
   actor fighting the attacker decide: it must be in melee with a shield or a
@@ -186,7 +194,9 @@ scene's stage 10 is done); `--set-stage MQ102:50` lets him go about his day.
   (fCombatCurrentWeaponAbsoluteMaxRangeMult, read as the stretch of the weapon
   in hand) if its style scores ranged above melee, and keeps the bow down to
   256 (placeholder), so it does not flip at one edge. Only a bow, or a flying
-  target: the bow.
+  target: the bow. An archer whose arrow would hit another actor first
+  (`shot_blocked`) moves as if without a line of sight (placeholder: the
+  game's rule is unknown; a soldier shot the one in front of him dead).
 - Talk. An actor in combat, or one whose aggression and reaction would start a
   fight with the player (`combat_ai::refuses_talk`; calm counts as not hostile),
   refuses `GameSession.dialogue_open`: activating it says nothing, and its
@@ -268,10 +278,11 @@ Alvor's house at 08:00 Alvor and Sigrid leave through the front door.
   not check menus; Follow and Escort do not ride or keep formation
   (fFollowSpaceBetweenFollowers), and Escort reads neither its follower
   distances nor its last float input (500 in vanilla).
-- Walks can stick on geometry the navmesh passes close to (Illia on the
-  DarklightTower01 stairs, ImpTowerOutStairs01; Erandur between ice walls
-  east of Nightcaller Temple): after four walks the spot counts as reached,
-  so a Travel or Escort can end short of it.
+- Walks can stick on geometry the navmesh passes under (an ImpExtIceRubble02
+  overhang east of Nightcaller Temple, at about 42330, 99820): after four
+  walks the spot counts as reached, so a Travel or Escort can end short of
+  it. What the game does there is not known. Illia's stick on the
+  DarklightTower01 stairs does not happen headless (`sse_nav_paths`).
 - Location aliases, "object id/type" locations, GetInCurrentLoc and other
   location (LCTN) conditions: no cell-to-location mapping yet.
 - Horses (RideHorseIfPossible), swimming, preferred paths.
