@@ -1245,9 +1245,22 @@ bool SkydotPapyrus::is_activation_blocked(std::int64_t ref) const {
 }
 
 Dictionary SkydotPapyrus::get_disabled_changes() const {
+    // The changed references and their enable children, whose state follows them (Riverwood's Imperial guards
+    // follow an XMarker the civil war setup disables).
     Dictionary out;
+    std::vector<std::uint32_t> todo;
     for (const auto& [ref, value] : states_.disabled) {
         out[static_cast<std::int64_t>(ref)] = value;
+        todo.push_back(ref);
+    }
+    for (std::size_t i = 0; i < todo.size() && world_.is_valid() && todo.size() < 65536; ++i) {
+        for (const std::int64_t child : world_->get_enable_children(todo[i])) {
+            const auto id = static_cast<std::uint32_t>(child);
+            if (!out.has(child)) {
+                out[child] = disabled(id);
+                todo.push_back(id);
+            }
+        }
     }
     return out;
 }

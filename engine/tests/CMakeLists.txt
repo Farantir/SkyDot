@@ -337,6 +337,16 @@ if(SKYDOT_SSE_PACK)
         TIMEOUT 300
         ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
+    add_test(NAME sse_nav_paths
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/nav_paths_sse.gd")
+    set_tests_properties(sse_nav_paths PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     add_test(NAME sse_escort
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/escort_sse.gd")
     set_tests_properties(sse_escort PROPERTIES
@@ -350,6 +360,16 @@ if(SKYDOT_SSE_PACK)
     add_test(NAME sse_quest_alias_packages
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/quest_alias_packages_sse.gd")
     set_tests_properties(sse_quest_alias_packages PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
+    add_test(NAME sse_enable_children
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/enable_children_sse.gd")
+    set_tests_properties(sse_enable_children PROPERTIES
         LABELS sse
         FIXTURES_REQUIRED godot_scan
         SKIP_RETURN_CODE 77

@@ -453,7 +453,7 @@ public:
     godot::Array get_scripts(std::int64_t ref) const;
 
     bool is_ref_disabled(std::int64_t ref) const;
-    /// References whose enabled state scripts changed: ref -> disabled.
+    /// References whose enabled state scripts changed, and their enable children: ref -> disabled.
     godot::Dictionary get_disabled_changes() const;
     /// Where scripts moved references to: ref -> [position, rotation], as the
     /// `ref_moved` signal sends them (Skyrim space, radians).
