@@ -238,6 +238,17 @@ public:
     std::int64_t get_cell_music(std::int64_t cell) const;
     std::int64_t get_world_music(std::int64_t world) const;
     std::int64_t get_location_music(std::int64_t location) const;
+    /// Placed water (format 51, engine/docs/physics.md): the WATR of a
+    /// reference's activator (ACTI WNAM), 0 if it is not placed water.
+    std::int64_t get_ref_water_type(std::int64_t ref) const;
+    /// Its currents (REFR XWCU) as Vector4 (x, y, z, w), game axes; the
+    /// first is the linear velocity. Empty if it has none.
+    godot::Array get_ref_water_currents(std::int64_t ref) const;
+    /// A cell's water type: XCWT, else (exteriors) its worldspace's; 0 none.
+    std::int64_t get_cell_water_type(std::int64_t cell) const;
+    /// A water type's current (WATR NAM0, NAM1): linear, angular (Vector3,
+    /// game axes). Empty for an unknown id.
+    godot::Dictionary get_water_velocity(std::int64_t water) const;
     /// The regions of `world` (or its parent) with music whose areas hold
     /// (x, y), game units, as get_region_sounds' entries (`music` set).
     godot::Array get_region_music(std::int64_t world, double x, double y) const;

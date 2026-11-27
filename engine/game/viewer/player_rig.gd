@@ -78,6 +78,14 @@ func set_sprint_allowed(allowed: bool) -> void:
 	player.set_sprint_allowed(allowed)
 
 
+func is_underwater() -> bool:
+	return player.is_underwater()
+
+
+func get_breath() -> float:
+	return player.get_breath()
+
+
 ## The player's speeds and jump, for the game (the data's movement types, slow time).
 func set_walk_speed(value: float) -> void:
 	player.walk_speed = value

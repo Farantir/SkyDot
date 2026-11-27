@@ -80,6 +80,10 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("find_music_type", "editor_id"), &SkydotWorld::find_music_type);
     godot::ClassDB::bind_method(D_METHOD("find_music_track", "editor_id"), &SkydotWorld::find_music_track);
     godot::ClassDB::bind_method(D_METHOD("get_cell_music", "cell"), &SkydotWorld::get_cell_music);
+    godot::ClassDB::bind_method(D_METHOD("get_ref_water_type", "ref"), &SkydotWorld::get_ref_water_type);
+    godot::ClassDB::bind_method(D_METHOD("get_ref_water_currents", "ref"), &SkydotWorld::get_ref_water_currents);
+    godot::ClassDB::bind_method(D_METHOD("get_cell_water_type", "cell"), &SkydotWorld::get_cell_water_type);
+    godot::ClassDB::bind_method(D_METHOD("get_water_velocity", "water"), &SkydotWorld::get_water_velocity);
     godot::ClassDB::bind_method(D_METHOD("get_world_music", "world"), &SkydotWorld::get_world_music);
     godot::ClassDB::bind_method(D_METHOD("get_location_music", "location"), &SkydotWorld::get_location_music);
     godot::ClassDB::bind_method(D_METHOD("get_region_music", "world", "x", "y"), &SkydotWorld::get_region_music);
@@ -371,6 +375,14 @@ Dictionary SkydotWorld::get_music_track(std::int64_t id) const { return queries:
 std::int64_t SkydotWorld::find_music_type(const String& editor_id) const { return queries::find_music_type(data(), editor_id); }
 std::int64_t SkydotWorld::find_music_track(const String& editor_id) const { return queries::find_music_track(data(), editor_id); }
 std::int64_t SkydotWorld::get_cell_music(std::int64_t cell) const { return queries::get_cell_music(data(), cell); }
+std::int64_t SkydotWorld::get_ref_water_type(std::int64_t ref) const { return queries::get_ref_water_type(data(), ref); }
+godot::Array SkydotWorld::get_ref_water_currents(std::int64_t ref) const {
+    return queries::get_ref_water_currents(data(), ref);
+}
+std::int64_t SkydotWorld::get_cell_water_type(std::int64_t cell) const { return queries::get_cell_water_type(data(), cell); }
+godot::Dictionary SkydotWorld::get_water_velocity(std::int64_t water) const {
+    return queries::get_water_velocity(data(), water);
+}
 std::int64_t SkydotWorld::get_world_music(std::int64_t world) const { return queries::get_world_music(data(), world); }
 std::int64_t SkydotWorld::get_location_music(std::int64_t location) const { return queries::get_location_music(data(), location); }
 godot::Array SkydotWorld::get_region_music(std::int64_t world, double x, double y) const { return queries::get_region_music(data(), world, x, y); }

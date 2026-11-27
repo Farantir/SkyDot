@@ -115,6 +115,7 @@ skydot_smoke_test(smoke_animation animation.gd)
 skydot_smoke_test(smoke_actors actors.gd)
 skydot_smoke_test(smoke_ai ai.gd)
 skydot_smoke_test(smoke_physics physics.gd)
+skydot_smoke_test(smoke_swim swim.gd)
 skydot_smoke_test(smoke_navigation navigation.gd)
 skydot_smoke_test(smoke_weather weather.gd)
 skydot_smoke_test(smoke_session session.gd)
@@ -380,6 +381,16 @@ if(SKYDOT_SSE_PACK)
     add_test(NAME sse_music
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/music_sse.gd")
     set_tests_properties(sse_music PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
+    add_test(NAME sse_water
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/water_sse.gd")
+    set_tests_properties(sse_water PROPERTIES
         LABELS sse
         FIXTURES_REQUIRED godot_scan
         SKIP_RETURN_CODE 77

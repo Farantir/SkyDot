@@ -77,6 +77,8 @@ void SkydotPlayer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_sprint_allowed"), &SkydotPlayer::get_sprint_allowed);
     ClassDB::bind_method(D_METHOD("clear_water"), &SkydotPlayer::clear_water);
     ClassDB::bind_method(D_METHOD("has_water"), &SkydotPlayer::has_water);
+    ClassDB::bind_method(D_METHOD("is_underwater"), &SkydotPlayer::is_underwater);
+    ClassDB::bind_method(D_METHOD("get_breath"), &SkydotPlayer::get_breath);
 
 #define SKYDOT_PROPERTY(name, type)                                                              \
     ClassDB::bind_method(D_METHOD("set_" #name, "value"), &SkydotPlayer::set_##name);          \
@@ -99,6 +101,7 @@ void SkydotPlayer::_bind_methods() {
     SKYDOT_PROPERTY(step_height, FLOAT);
     SKYDOT_PROPERTY(radius, FLOAT);
     SKYDOT_PROPERTY(height, FLOAT);
+    SKYDOT_PROPERTY(breath_time, FLOAT);
 #undef SKYDOT_PROPERTY
     ClassDB::bind_method(D_METHOD("get_yaw"), &SkydotPlayer::get_yaw);
 }
@@ -167,6 +170,7 @@ void SkydotPlayer::teleport(const Vector3& feet) {
     set_velocity(Vector3());
     previous_ = current_ = feet;
     swimming_ = false;
+    breath_ = breath_time_;
 }
 
 void SkydotPlayer::set_fly(bool fly) {
@@ -179,6 +183,10 @@ void SkydotPlayer::set_fly(bool fly) {
 void SkydotPlayer::set_water_height(double height) {
     water_height_ = height;
     has_water_ = true;
+}
+
+bool SkydotPlayer::is_underwater() const {
+    return has_water_ && !fly_ && static_cast<double>(get_global_position().y) + eye_height_ < water_height_;
 }
 
 Vector3 SkydotPlayer::get_eye_position() const {
@@ -218,6 +226,8 @@ void SkydotPlayer::_physics_process(double delta) {
     } else {
         swimming_ = chest < water_height_;
     }
+    // The breath runs down under water and is back at once above it (assumed).
+    breath_ = is_underwater() ? std::max(0.0, breath_ - delta) : breath_time_;
     const Vector3 before = get_velocity();
     if (swimming_) {
         swim(delta);
@@ -280,15 +290,22 @@ void SkydotPlayer::walk(double delta) {
 }
 
 void SkydotPlayer::swim(double delta) {
+    // Along the look (yaw and pitch): forward looking down dives.
     Vector3 target = (look_basis().xform(Vector3(move_.x, 0, -move_.y)) +
                       Vector3(0, r(vertical_), 0))
                          .limit_length(1) *
                      r(gait_ == WALK ? swim_walk_speed_ : swim_speed_);
     if (vertical_ == 0.0) {
-        // Float with the chest just under the surface.
+        // The chest rests just under the surface: without move input it floats
+        // there (up or down, at most 1 m/s); moving level or upwards stops there
+        // instead of leaving the water. Moving downwards dives.
         const double chest = static_cast<double>(get_global_position().y) + chest_;
-        const double rise = std::clamp((water_height_ - k_float_depth - chest) * 2.0, -1.0, 1.0);
-        target.y = r(std::max(static_cast<double>(target.y), rise));
+        const double rest = (water_height_ - k_float_depth - chest) * 2.0;
+        if (move_.length_squared() < 0.0001F) {
+            target.y = r(std::clamp(rest, -1.0, 1.0));
+        } else if (target.y >= 0.0F) {
+            target.y = r(std::min(static_cast<double>(target.y), rest));
+        }
     }
     set_velocity(get_velocity().lerp(target, r(std::min(1.0, k_water_accel * delta))));
     move_and_slide();

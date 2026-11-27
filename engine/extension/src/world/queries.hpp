@@ -98,6 +98,10 @@ std::int64_t find_music_track(const WorldData& data, const godot::String& editor
 std::int64_t get_cell_music(const WorldData& data, std::int64_t cell);
 std::int64_t get_world_music(const WorldData& data, std::int64_t world);
 std::int64_t get_location_music(const WorldData& data, std::int64_t location);
+std::int64_t get_ref_water_type(const WorldData& data, std::int64_t ref);
+godot::Array get_ref_water_currents(const WorldData& data, std::int64_t ref);
+std::int64_t get_cell_water_type(const WorldData& data, std::int64_t cell);
+godot::Dictionary get_water_velocity(const WorldData& data, std::int64_t water);
 godot::Array get_region_music(const WorldData& data, std::int64_t world, double x, double y);
 std::int64_t get_weather_classification(const WorldData& data, std::int64_t weather);
 godot::Dictionary get_footstep_set(const WorldData& data, std::int64_t id);

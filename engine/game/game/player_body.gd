@@ -50,6 +50,16 @@ func is_in_air() -> bool:
 	return false
 
 
+## The eye under water (the breath runs out meanwhile).
+func is_underwater() -> bool:
+	return false
+
+
+## Breath left, 1 (full) to 0 (out: the session drowns the player).
+func get_breath() -> float:
+	return 1.0
+
+
 ## Put the player at `position` (a camera position) looking along `new_yaw` and `new_pitch`.
 func place_at(new_position: Vector3, new_yaw: float, new_pitch: float) -> void:
 	position = new_position

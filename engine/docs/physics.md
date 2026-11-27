@@ -79,11 +79,62 @@ bottom meets a step's edge at a slant and slides off.
   enough onto the step (8 cm past the edge) that the flat bottom stands on it
   rather than on Jolt's rounded edge. It never steps onto loose clutter but
   pushes it.
-- Swims when the chest (1.25 m) is under `water_height`, floating just under
-  the surface; leaves the water 0.25 m above it.
+- Swims when the chest (1.25 m) is under `water_height`; leaves the water
+  0.25 m above it. Swimming follows the look (yaw and pitch): forward looking
+  down dives. Without move input the chest floats back to 0.1 m under the
+  surface (at most 1 m/s); moving level or upwards stops there instead of
+  leaving the water. The 0.1 m, the 1 m/s and the water's acceleration are
+  assumed, as is diving at any downward pitch (no dead zone is known).
+- Breath: `is_underwater` (the eye under the surface) runs `get_breath` (1 to
+  0) down over `breath_time`, 20 s, and refills it at once above water
+  (assumed). 20 s is what players measure for vanilla Skyrim;
+  fActorSwimBreathBase defaults to 10 s (CK Settings page, not in the esm), and
+  how fActorSwimBreathMult (0.2) adds the rest is unknown, so the 20 s is
+  fixed (assumed). Out of breath, GameSession takes fActorSwimBreathDamage
+  (0.08) of the Health maximum per second (the CK's "percent of health lost
+  per second"), unless the player's WaterBreathing actor value is above 0.
+  The LeaveWaterBreath gasp (a voice topic) is not played.
 - `fly` ignores collision; `hold` freezes it (the viewer holds it until the
   cell under it is built).
 - `get_eye_position` interpolates between physics ticks, for the camera.
+
+## Water
+
+Skyrim makes water two ways (Skyrim.esm and Update.esm, read 2026-11-27):
+
+- Cell water: each exterior cell's XCLW height and XCWT type (else the
+  worldspace's), drawn as the cell's "Water" plane. Rivers above sea level are
+  mostly this, stepping from cell to cell: the White River at Riverwood is
+  cell water at -250 in most cells of (2..7, -13..-9). Skyrim.esm gives them
+  RiverWaterFlowNE; Update.esm sets 613 cells to the SE flow-map type
+  RiverWaterFlow, whose NAM0 current is 0. SE adds 641 per-cell flow maps,
+  textures/water/skyrim.esm/flow.X.Y.dds (64x64 BGRA); what their channels
+  mean is not decoded.
+- Placed water: references of an ACTI with WNAM (a WATR): 62 such
+  activators, 691 references (207 in Tamriel, 406 in interiors), models
+  meshes/water/water1024.nif and similar (and some architecture and
+  troughs). The model's shape uses BSWaterShaderProperty, drawn with the
+  activator's water type (`Base.water`), else the cell's. Its water volume
+  is a bhkSimpleShapePhantom box on layer 11 (water) whose top is the
+  surface: water1024.nif's plane is at local z 0, the box from -1024 to 0
+  over 1024 x 1024 units. The model's root carries it in the
+  `skydot_phantoms` meta (physics/collision.hpp); the reference's transform
+  places it. None is near Riverwood; the nearest White River one is
+  0x3AC84 in (7, -6).
+
+Currents: a WATR's NAM0 and NAM1 are the linear and angular velocity of its
+current (xEdit), world axes: RiverWaterFlowNE (2.54, 1.35, 0); 17 of 34
+Skyrim.esm types have a linear one, none an angular one. 128 placed
+references carry XWCN 3 and XWCU (3 x X, Y, Z, W); the first entry is the
+type's NAM0 as it was when placed (100 of 128 equal it, the rest older
+values), the others and every W are 0. Rotating a reference does not turn
+it. Assumed: the reference's XWCU is what pushes, in Havok units (about 1 m)
+per second; cell water pushes at its type's NAM0. Not yet applied to the
+player.
+
+`SkydotWorld`: `get_ref_water_type`, `get_ref_water_currents` (Vector4s, game
+axes), `get_cell_water_type`, `get_water_velocity` (linear, angular).
+`tests/smoke/water_sse.gd`.
 
 ## Picking
 
@@ -118,7 +169,7 @@ flying.
 
 ## Open
 
-- Not seen on screen yet: feel of the speeds, the step-up, swimming.
+- Not seen on screen yet: feel of the speeds, the step-up, swimming, diving.
 - Explosions do not wake clutter, and `SetMotionType` cannot make a static
   model move (only models built as clutter can).
 - Constraints in actors' ragdolls (`game/game/ragdoll.gd`: the race

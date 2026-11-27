@@ -458,4 +458,47 @@ std::int64_t get_exterior_cell(const WorldData& data, std::int64_t world, std::i
     return cell != nullptr ? cell->id() : 0;
 }
 
+std::int64_t get_ref_water_type(const WorldData& data, std::int64_t ref) {
+    const auto* r = data.ref_ptr(static_cast<std::uint32_t>(ref));
+    const auto* base = r != nullptr ? data.base_ptr(r->base()) : nullptr;
+    return base != nullptr ? static_cast<std::int64_t>(base->water()) : 0;
+}
+
+Array get_ref_water_currents(const WorldData& data, std::int64_t ref) {
+    Array out;
+    const auto* cell = data.cell_ptr(data.cell_of_ref(ref));
+    const auto* list = cell != nullptr ? cell->water_currents() : nullptr;
+    const auto* current = list != nullptr ? list->LookupByKey(static_cast<std::uint32_t>(ref)) : nullptr;
+    if (current == nullptr || current->velocities() == nullptr) {
+        return out;
+    }
+    for (const auto* v : *current->velocities()) {
+        out.push_back(godot::Vector4(v->x(), v->y(), v->z(), v->w()));
+    }
+    return out;
+}
+
+std::int64_t get_cell_water_type(const WorldData& data, std::int64_t cell) {
+    const auto* c = data.cell_ptr(cell);
+    if (c == nullptr) {
+        return 0;
+    }
+    if (c->world() == 0) {
+        return static_cast<std::int64_t>(c->water());
+    }
+    return static_cast<std::int64_t>(data.water_type(data.cell_space(cell), c));
+}
+
+Dictionary get_water_velocity(const WorldData& data, std::int64_t water) {
+    Dictionary out;
+    const auto* w = data.water_ptr(static_cast<std::uint32_t>(water));
+    if (w == nullptr) {
+        return out;
+    }
+    const auto vec = [](const wfb::Vec3f* v) { return v != nullptr ? Vector3(v->x(), v->y(), v->z()) : Vector3(); };
+    out["linear"] = vec(w->linear_velocity());
+    out["angular"] = vec(w->angular_velocity());
+    return out;
+}
+
 } // namespace skydot::queries

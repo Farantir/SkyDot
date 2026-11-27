@@ -125,6 +125,8 @@ const SHOUT_TOPICS := {1: [0x13E01], 2: [0x13E00, 0x13DFF], 3: [0x13E00, 0x13DFE
 const SPRINT_DRAIN_MULT := 7.0
 const SPRINT_WEIGHT_BASE := 1.0
 const SPRINT_WEIGHT_MULT := 0.02
+## Out of breath, the share of the Health maximum lost per second (Skyrim.esm's value).
+const SWIM_BREATH_DAMAGE := 0.08
 ## The race of the player's NPC_ (combat.gd's PLAYER_NPC), whose movement types it walks by.
 const PLAYER_NPC := 7
 ## fJumpHeightMin in Skyrim.esm, in game units.
@@ -963,6 +965,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	corpses.step(delta)
 	visual_effects.step(delta)
 	_drain_sprint(delta)
+	_drown(delta)
 	if ai != null:
 		clock.sync(benchmarking)
 		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not player_state.is_dead())
@@ -1024,6 +1027,18 @@ func _worn_armor_weight() -> float:
 		if row["equipped"] and row["category"] == "armor":
 			weight += float(row["weight"])
 	return weight
+
+
+## Out of breath under water, the player loses fActorSwimBreathDamage of its Health
+## maximum per second, unless it breathes water (the WaterBreathing actor value).
+func _drown(delta: float) -> void:
+	if not _player.is_underwater() or _player.get_breath() > 0.0 or player_state.is_dead():
+		return
+	if actor_value(SkydotPapyrus.PLAYER_REF, "WaterBreathing") > 0.0:
+		return
+	var rate := world.get_gmst_float("fActorSwimBreathDamage", SWIM_BREATH_DAMAGE)
+	var maximum := papyrus.get_actor_value_max(SkydotPapyrus.PLAYER_REF, "Health")
+	papyrus.damage_actor_value(SkydotPapyrus.PLAYER_REF, "Health", rate * maximum * delta)
 
 
 ## Stamina per second while sprinting, by the weight of the worn armor.

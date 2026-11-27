@@ -171,10 +171,14 @@ void Decorator::Steps::water(Decorator& self, godot::Node3D* model, Decoration& 
                 continue;
             }
             if (water.is_null()) {
-                // The activator's own water type (ACTI WNAM) is not in
-                // world.fb yet: the cell's, else its worldspace's.
-                const auto space = static_cast<std::uint32_t>(data.cell_space(cell));
-                water = self.water_material(data.water_ptr(data.water_type(space, data.cell_ptr(cell))));
+                // The activator's own water type (ACTI WNAM), else the
+                // cell's, else its worldspace's.
+                std::uint32_t type = d.base != nullptr ? d.base->water() : 0;
+                if (type == 0) {
+                    const auto space = static_cast<std::uint32_t>(data.cell_space(cell));
+                    type = data.water_type(space, data.cell_ptr(cell));
+                }
+                water = self.water_material(data.water_ptr(type));
             }
             instance->set_surface_override_material(s, water);
         }

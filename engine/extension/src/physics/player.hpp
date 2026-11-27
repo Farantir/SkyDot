@@ -18,6 +18,7 @@
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include <algorithm>
 #include <cstdint>
 
 namespace skydot {
@@ -59,6 +60,13 @@ public:
     double get_water_height() const { return water_height_; }
     void clear_water() { has_water_ = false; }
     bool has_water() const { return has_water_; }
+    /// The eye under the surface: the breath runs out meanwhile.
+    bool is_underwater() const;
+    /// Breath left, 1 (full) to 0 (out: the game layer drowns the player).
+    double get_breath() const { return breath_time_ > 0.0 ? breath_ / breath_time_ : 0.0; }
+    /// Seconds the breath lasts under water.
+    void set_breath_time(double v) { breath_time_ = v; breath_ = std::min(breath_, v); }
+    double get_breath_time() const { return breath_time_; }
 
     void set_eye_height(double v) { eye_height_ = v; }
     double get_eye_height() const { return eye_height_; }
@@ -142,6 +150,8 @@ private:
     bool fly_{false};
     bool hold_{false};
     bool swimming_{false};
+    double breath_time_{20.0};
+    double breath_{20.0};
     bool has_water_{false};
     double water_height_{0.0};
     godot::Vector3 previous_; ///< Feet at the last two ticks.
