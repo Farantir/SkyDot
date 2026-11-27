@@ -703,6 +703,8 @@ public:
     godot::PackedInt64Array get_running_quests() const;
     /// The reference (or location) filling alias `alias` of `quest`, or 0.
     std::int64_t get_alias_ref(std::int64_t quest, std::int64_t alias) const;
+    /// The aliases `ref` fills in running quests: quest, alias id.
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> aliases_filled_by(std::uint32_t ref) const;
     double get_global_value(std::int64_t global) const;
     void set_global_value(std::int64_t global, double value);
 

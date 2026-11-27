@@ -916,6 +916,17 @@ const std::vector<std::uint32_t>& SkydotAi::packages_of(const Mind& m) {
     return package_lists_.emplace(m.ref, ai::package_list(*root(), m.npc, m.ref)).first->second;
 }
 
+std::vector<std::uint32_t> SkydotAi::all_packages_of(const Mind& m) {
+    auto out = vm_ != nullptr ? ai::alias_packages(*root(), vm_->aliases_filled_by(m.ref))
+                              : std::vector<std::uint32_t>{};
+    for (const auto id : packages_of(m)) {
+        if (std::ranges::find(out, id) == out.end()) {
+            out.push_back(id);
+        }
+    }
+    return out;
+}
+
 bool SkydotAi::has_lock(std::uint32_t door) const {
     if (const auto it = lock_cache_.find(door); it != lock_cache_.end()) {
         return it->second;
@@ -996,7 +1007,7 @@ bool SkydotAi::choose(Mind& m) {
     conditions_->choosing = true;
     const auto id = forced != forced_.end() && !forced->second.empty()
                         ? forced->second.back()
-                        : ai::choose_package(*root(), packages_of(m), m.ref, clock_, host, skip);
+                        : ai::choose_package(*root(), all_packages_of(m), m.ref, clock_, host, skip);
     conditions_->choosing = false;
     if (id == m.package && !m.steps.empty()) {
         replan(m);
@@ -2000,7 +2011,7 @@ Array SkydotAi::get_packages(std::int64_t ref) {
     }
     conditions_->mind = m;
     const ai::ConditionSource host(*conditions_, conditions_.get());
-    for (const auto id : ai::package_list(*root(), m->npc, m->ref)) {
+    for (const auto id : all_packages_of(*m)) {
         const auto pkg = ai::resolve_package(*root(), id);
         Dictionary d;
         d["id"] = static_cast<std::int64_t>(id);

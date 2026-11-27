@@ -571,9 +571,11 @@ private:
     mutable std::unordered_map<std::uint32_t, bool> lock_cache_;
     /// Static per actor: its package list (NPC_ templates followed).
     std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> package_lists_;
-    /// Packages scenes pushed, per actor, the last one on top.
+    /// Packages scenes pushed, per actor, the last one on top (above alias packages).
     std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> forced_;
     const std::vector<std::uint32_t>& packages_of(const Mind& m);
+    /// The packages the quest aliases `m` fills give, then packages_of: what choose tries.
+    std::vector<std::uint32_t> all_packages_of(const Mind& m);
     std::unordered_map<std::uint32_t, std::vector<std::pair<std::uint32_t, std::uint32_t>>> doors_;
     /// Not per-reference (keyed by door, cell or pack data): doors_, lock_cache_, pending_locks_, persistent_,
     /// spell_facts_, relationships_; overrides_cache_ is dropped for the reference too, but cleared every update. The rest are in the papyrus object's forget registry (state/ref_forget.hpp).

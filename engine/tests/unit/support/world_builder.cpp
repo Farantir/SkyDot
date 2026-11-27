@@ -474,6 +474,23 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         const auto edid = fbb.CreateString(k.editor_id);
         keywords_table.push_back(wfb::CreateKeyword(fbb, k.id, edid));
     }
+    std::vector<flatbuffers::Offset<wfb::Quest>> quests;
+    for (const auto& q : by_id(spec.quests)) {
+        std::vector<flatbuffers::Offset<wfb::QuestAlias>> aliases;
+        for (const auto& a : q.aliases) {
+            const auto list = a.packages.empty() ? 0 : fbb.CreateVector(a.packages);
+            wfb::QuestAliasBuilder b(fbb);
+            b.add_id(a.id);
+            b.add_packages(list);
+            aliases.push_back(b.Finish());
+        }
+        const auto aliases_v = fbb.CreateVector(aliases);
+        wfb::QuestBuilder b(fbb);
+        b.add_id(q.id);
+        b.add_priority(q.priority);
+        b.add_aliases(aliases_v);
+        quests.push_back(b.Finish());
+    }
     std::vector<flatbuffers::Offset<wfb::Package>> packages;
     for (const auto& p : by_id(spec.packages)) {
         packages.push_back(package(fbb, p));
@@ -548,6 +565,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     const auto enchantments_v = fbb.CreateVector(enchantments);
     const auto form_lists_v = fbb.CreateVector(form_lists);
     const auto keywords_v = fbb.CreateVector(keywords_table);
+    const auto quests_v = fbb.CreateVector(quests);
     wfb::WorldBuilder world(fbb);
     world.add_format_version(static_cast<std::uint32_t>(spec.format_version));
     world.add_worlds(worlds_v);
@@ -574,6 +592,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_enchantments(enchantments_v);
     world.add_form_lists(form_lists_v);
     world.add_keywords(keywords_v);
+    world.add_quests(quests_v);
     wfb::FinishWorldBuffer(fbb, world.Finish());
 
     bytes_.assign(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());

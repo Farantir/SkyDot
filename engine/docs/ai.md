@@ -24,15 +24,19 @@ passes runs:
   takes over: Sigrid's "walk to the garden at 8" (duration 0, must complete)
   gives way to hoeing the garden once she is there.
 
-Packages given by quest aliases (ALPC) and scenes are not read yet: an actor
-does what its NPC_ says, not what a running quest wants of it.
+Before its own come the packages of the reference aliases it fills in running
+quests (ALPC): the highest quest priority (DNAM) first, a tie by form id,
+then the quest's alias order and the alias's package order (Hadvar at MQ101
+stage 200 runs MQ101HadvarIntoKeep, MQ101DragonAttack at 81 before MQ101 at
+80). They stop when the quest stops or the alias is emptied. Packages a scene
+action pushes stay above all of these while the action runs.
 
 Packages are chosen again every 1.5 s for built actors (3 s and 6 s for those
 at the middle and far level of detail, `actors.md`; their steps are also
 updated every 0.2 s and 0.5 s instead of every frame), and every five game
 minutes for the others; the first think is staggered by reference. The 1.5 s
 is assumed (no GMST names it). A package pushed by a script (`push_package`)
-stays above the schedule until popped. The running package is restarted
+stays above alias packages and the schedule until popped. The running package is restarted
 only when the choice differs: an unchanged one keeps its step, so a seated
 actor stays seated. While choosing, GetRandomPercent in a package's own
 conditions is a hash of actor, package and game hour (assumed), so the

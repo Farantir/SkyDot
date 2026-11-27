@@ -492,6 +492,41 @@ std::vector<std::uint32_t> package_list(const wfb::World& world, std::uint32_t n
     return out;
 }
 
+std::vector<std::uint32_t> alias_packages(const wfb::World& world,
+                                          std::vector<std::pair<std::uint32_t, std::uint32_t>> filled) {
+    std::vector<std::uint32_t> out;
+    if (filled.empty() || world.quests() == nullptr) {
+        return out;
+    }
+    std::vector<const wfb::Quest*> quests;
+    for (const auto& [quest, alias] : filled) {
+        const auto* q = world.quests()->LookupByKey(quest);
+        if (q != nullptr && std::ranges::find(quests, q) == quests.end()) {
+            quests.push_back(q);
+        }
+    }
+    std::ranges::sort(quests, [](const wfb::Quest* a, const wfb::Quest* b) {
+        return a->priority() != b->priority() ? a->priority() > b->priority() : a->id() < b->id();
+    });
+    for (const auto* q : quests) {
+        if (q->aliases() == nullptr) {
+            continue;
+        }
+        for (const auto* a : *q->aliases()) {
+            const bool fills = std::ranges::find(filled, std::pair{q->id(), a->id()}) != filled.end();
+            if (!fills || a->location() || a->packages() == nullptr) {
+                continue;
+            }
+            for (const auto id : *a->packages()) {
+                if (id != 0 && std::ranges::find(out, id) == out.end()) {
+                    out.push_back(id);
+                }
+            }
+        }
+    }
+    return out;
+}
+
 double done_minutes(const wfb::Package& p) {
     return p.hour() >= 0 && p.duration() != 0 ? static_cast<double>(p.duration()) : 60.0;
 }

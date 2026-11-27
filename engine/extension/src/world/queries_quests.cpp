@@ -177,6 +177,13 @@ Dictionary get_quest(const WorldData& data, std::int64_t id) {
             alias["conditions"] = static_cast<std::int64_t>(a->conditions());
             alias["display_name"] = static_cast<std::int64_t>(a->display_name());
             alias["scripts"] = script_list(a->scripts(), false);
+            Array packages;
+            if (const auto* p = a->packages()) {
+                for (const auto package : *p) {
+                    packages.push_back(static_cast<std::int64_t>(package));
+                }
+            }
+            alias["packages"] = packages;
             aliases.push_back(alias);
         }
     }

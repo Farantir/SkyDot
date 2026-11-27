@@ -4,7 +4,8 @@
 # Riverwood until 07:00 (FaendalHunt, 04:00 for 4 hours, below FaendalCarryFirewood7x2 in his list): loaded
 # at 06:55 with the clock running, he takes up the firewood package once the hour is past and walks
 # towards it. Then in the Sleeping Giant Inn at 20:00 an actor seated by its package stays seated, in the
-# same furniture, across several thinks. Headless; skips without the pack.
+# same furniture, across several thinks (MS13 stopped first: while it runs, its alias packages keep Lucan
+# and Camilla in the Riverwood Trader). Headless; skips without the pack.
 extends SceneTree
 
 const FAENDAL := 0x1348C
@@ -128,6 +129,7 @@ func _faendal() -> void:
 
 
 func _seated() -> void:
+	_papyrus.stop_quest(_world.find_quest("MS13"))
 	var ai := SkydotAi.new()
 	ai.setup(_world, _papyrus)
 	ai.set_combat(false)

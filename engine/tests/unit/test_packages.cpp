@@ -974,3 +974,25 @@ TEST_CASE("the reference an input names directly", "[ai][packages]") {
     CHECK(ref(4) == 0); // in a cell, not near a reference
     CHECK(ref(5) == 0);
 }
+
+TEST_CASE("quest aliases give their packages before the actor's own, the higher quest priority first", "[ai][choose]") {
+    const BuiltWorld world(WorldSpec{
+        .npcs = {{.id = 1, .packages = {10}}},
+        .packages = {{.id = 10}, {.id = 20}, {.id = 21}, {.id = 30}, {.id = 31}},
+        .quests = {{.id = 100, .priority = 10, .aliases = {{.id = 0, .packages = {20}}, {.id = 1, .packages = {21, 20}}}},
+                   {.id = 200, .priority = 50, .aliases = {{.id = 3, .packages = {31}}, {.id = 2, .packages = {30}}}}}});
+    using List = std::vector<std::uint32_t>;
+    // Aliases in the quest's order, each package once; quests by priority.
+    CHECK(ai::alias_packages(*world, {{100, 1}, {200, 2}, {100, 0}}) == List{30, 20, 21});
+    CHECK(ai::alias_packages(*world, {{200, 3}, {200, 2}}) == List{31, 30});
+    CHECK(ai::alias_packages(*world, {{100, 1}}) == List{21, 20});
+    // An alias the actor does not fill, or an unknown quest, gives nothing.
+    CHECK(ai::alias_packages(*world, {{300, 0}}).empty());
+    CHECK(ai::alias_packages(*world, {}).empty());
+    // Put before the NPC_'s list, the alias package is chosen.
+    auto list = ai::alias_packages(*world, {{100, 0}});
+    const auto own = ai::package_list(*world, 1, k_actor);
+    list.insert(list.end(), own.begin(), own.end());
+    FakeHost host;
+    CHECK(ai::choose_package(*world, list, k_actor, at(0, 9, 0), host) == 20);
+}

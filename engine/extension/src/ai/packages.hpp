@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace skydot::ai {
@@ -173,6 +174,12 @@ double done_minutes(const wfb::Package& p);
 /// The packages `choose_package` tries, in order.
 std::vector<std::uint32_t> package_list(const wfb::World& world, std::uint32_t npc,
                                         std::uint32_t actor);
+
+/// The packages quest aliases give an actor filling `filled` (quest, alias id):
+/// they come before its own. The highest quest priority (DNAM) first, a tie by
+/// form id; within a quest its aliases' order, within an alias ALPC's.
+std::vector<std::uint32_t> alias_packages(const wfb::World& world,
+                                          std::vector<std::pair<std::uint32_t, std::uint32_t>> filled);
 
 /// GetNumericPackageData (612), which conditions inside a tree use to read
 /// the package's own inputs.

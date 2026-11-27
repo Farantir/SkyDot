@@ -400,6 +400,24 @@ std::int64_t SkydotPapyrus::get_alias_ref(std::int64_t quest, std::int64_t alias
     return quests_.fill(quests_.find_handle(static_cast<std::uint32_t>(quest), static_cast<std::uint32_t>(alias)));
 }
 
+std::vector<std::pair<std::uint32_t, std::uint32_t>> SkydotPapyrus::aliases_filled_by(std::uint32_t ref) const {
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> out;
+    if (ref == 0) {
+        return out;
+    }
+    for (const auto& [handle, fill] : quests_.fills()) {
+        if (fill != ref) {
+            continue;
+        }
+        const auto* key = quests_.owner(handle);
+        const auto* quest = key != nullptr ? quests_.find(key->first) : nullptr;
+        if (quest != nullptr && quest->running) {
+            out.push_back(*key);
+        }
+    }
+    return out;
+}
+
 SkydotPapyrus::ClockGlobal SkydotPapyrus::clock_global(std::uint32_t global) const {
     if (clock_.is_null() || world_.is_null()) {
         return ClockGlobal::none;

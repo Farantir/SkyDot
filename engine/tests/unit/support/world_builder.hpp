@@ -459,6 +459,17 @@ struct KeywordSpec {
     std::string editor_id = {};
 };
 
+/// QUST: its priority and its reference aliases' packages (ALPC), in alias order.
+struct QuestSpec {
+    std::uint32_t id;
+    std::uint8_t priority = 0;
+    struct Alias {
+        std::uint32_t id;
+        std::vector<std::uint32_t> packages = {};
+    };
+    std::vector<Alias> aliases = {};
+};
+
 /// "LVLN" as the record type a leveled list of NPCs carries.
 inline constexpr std::uint32_t k_lvln = 0x4E4C564C;
 
@@ -585,6 +596,7 @@ struct WorldSpec {
     std::vector<EnchantmentSpec> enchantments = {};
     std::vector<FormListSpec> form_lists = {};
     std::vector<KeywordSpec> keywords = {};
+    std::vector<QuestSpec> quests = {};
 };
 
 /// A built and verified world.fb, kept alive with the reader on it.
