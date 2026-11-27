@@ -405,12 +405,12 @@ private:
     void follow_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds);
     void escort_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds);
     /// Walk after a moving `spot` until within `reach`.
-    void chase(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds);
+    void chase(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds, bool hurry = false);
     /// A tree that reads where actors are is planned again; true if its steps changed. `finished`: also
     /// once its steps ran out.
     bool replan(Mind& m, bool finished = false);
     /// Walk towards `spot`; true once within `reach` game units of it.
-    bool go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds);
+    bool go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds, bool hurry = false);
     void next_step(Mind& m);
     /// An actor just attached with its package under way is in the furniture the package ends in (as the
     /// game loads it), driven or not; it walks, enters and gets up only when driven.

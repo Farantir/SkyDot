@@ -88,8 +88,8 @@ read nowhere yet).
 | UnlockDoors, LockDoors | the load doors of the place's interior (outside: those within its radius + 1024 units); only doors with a lock are locked |
 | Wait | stands for its seconds |
 | ForceGreet | walks up to the player (input 2, ForceGreetLoc, within its radius) until 150 units away (assumed), faces them and opens the dialogue on its Topic (`force_greet`; the step ends when it opens; refused, it tries again after fAIForceGreetingTimer, 3 s); only the player is greeted |
-| Follow | keeps between its min and max distance (inputs 1 and 2; the template's 128 and 256) of its target, through doors |
-| Escort | walks to its destination (input 3) while the escorted (its target) is within the wait distance (input 4; 512), else stops and waits; done on arrival |
+| Follow | keeps between its min and max distance (inputs 1 and 2; the template's 128 and 256) of its target, through doors; beyond twice the max distance it runs until within the max (placeholder) |
+| Escort | walks to its destination (input 2) while the escorted (its target) is within the wait distance (input 3; 512), else stops and waits; done on arrival. A walk broken off to wait is not one of the four after which a spot counts as reached |
 | anything else (UseWeapon, KeepAnEyeOn, Shout, …) | stands |
 
 Run speed: when the package's "preferred speed" flag (0x2000) is set and its
@@ -222,7 +222,22 @@ and nothing else runs (no packages followed, no fights).
 `smoke_ai` covers the test pack's NPC: home by night, out through the door
 by day, unlocking the door outside.
 `sse_patrol_wait` (SE pack) has Skuli in OldHroldanInn stand at a patrol
-point for its XPRD wait and walk on.
+point for its XPRD wait and walk on. `sse_follow`: DefaultFollowPlayer pushed
+on Faendal in Riverwood; he stops 100-130 units from the player, keeps still
+beside him, and runs after him when the player runs 1000 units off (at most
+256 behind). `sse_escort`: DA16ErandurEscortToTemple pushed on Erandur, 1500
+units south of Nightcaller Temple; he leads, waits four times when the player
+drops back past 512, goes on when caught up, and ends at the destination.
+`sse_schedule_switch`: Faendal, loaded at 06:55 with the clock running, takes
+up FaendalCarryFirewood7x2 at 07:00 and walks to the woodpile; Lucan, seated
+by LucanRiverwoodEatInn20x4 at 20:00, stays in his chair for ten seconds of
+thinks.
+
+Cost (Whiterun market at noon, 22 actors built, the rest placed): `update`
+takes 1.4 ms a frame in the debug build and 0.19 ms optimised (linux-play;
+p95 0.7 ms). Choosing and planning again is 36 us a think in debug, 9 us
+optimised (about 15 thinks a second here): 1 % of it. Most is steering and
+the placement slices of actors not built.
 
 Measured on vanilla SE (`ai_run.gd`, Riverwood, 07:57 to 08:30 at 60x): at
 08:00 Alvor and Sigrid come out of Alvor's house, Hod and Dorthe (who
@@ -247,7 +262,12 @@ Alvor's house at 08:00 Alvor and Sigrid leave through the front door.
   carrying (Faendal carries no log): the actor stands. Guard does not warn
   or attack. A ForceGreet greets only the player and does
   not check menus; Follow and Escort do not ride or keep formation
-  (fFollowSpaceBetweenFollowers).
+  (fFollowSpaceBetweenFollowers), and Escort reads neither its follower
+  distances nor its last float input (500 in vanilla).
+- Walks can stick on geometry the navmesh passes close to (Illia on the
+  DarklightTower01 stairs, ImpTowerOutStairs01; Erandur between ice walls
+  east of Nightcaller Temple): after four walks the spot counts as reached,
+  so a Travel or Escort can end short of it.
 - Location aliases, "object id/type" locations, GetInCurrentLoc and other
   location (LCTN) conditions: no cell-to-location mapping yet.
 - Horses (RideHorseIfPossible), swimming, preferred paths.

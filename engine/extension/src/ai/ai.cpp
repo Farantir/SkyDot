@@ -59,6 +59,8 @@ constexpr double k_greet_distance = 150.0;
 constexpr double k_follow_min = 128.0;
 constexpr double k_follow_max = 256.0;
 constexpr double k_escort_wait = 512.0;
+/// Follow runs to catch up beyond this many times its max distance, until within it (PLACEHOLDER).
+constexpr double k_follow_run_mult = 2.0;
 /// A sandbox this close to its centre wanders; farther, it walks there.
 constexpr double k_min_sandbox = 256.0;
 /// Walks towards one spot before it counts as reached anyway (the navmesh
@@ -1532,7 +1534,7 @@ void SkydotAi::leave(Mind& m, SkydotActor& actor, std::uint32_t door) {
     emit_signal("actor_left", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(door));
 }
 
-bool SkydotAi::go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds) {
+bool SkydotAi::go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds, bool hurry) {
     Vector3 to = spot.position;
     bool door = false;
     if (spot.space != m.space) {
@@ -1578,9 +1580,9 @@ bool SkydotAi::go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, d
         return false;
     }
     const auto* pkg = ai::find_package(*root(), m.package);
-    const bool run = pkg != nullptr &&
-                     formats::has_flag(pkg->flags(), wfb::PackageFlags::preferred_speed) &&
-                     pkg->speed() == 2;
+    const bool run = hurry || (pkg != nullptr &&
+                               formats::has_flag(pkg->flags(), wfb::PackageFlags::preferred_speed) &&
+                               pkg->speed() == 2);
     if (actor.walk_to(SkydotWorld::skyrim_position(to), run)) {
         ++m.walks;
         m.failures = 0;
@@ -1832,17 +1834,19 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
 
 // ---- going after another actor ---------------------------------------------
 
-void SkydotAi::chase(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds) {
-    // The target moves: a walk that ends far from where it is now is given up for a new one.
+void SkydotAi::chase(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds, bool hurry) {
+    // The target moves: a walk that ends far from where it is now is given up for a new one, and so
+    // is a walk that should now be a run.
     if (actor.is_walking()) {
         const auto path = actor.get_path();
-        if (!path.is_empty() &&
-            horizontal(SkydotWorld::godot_to_skyrim(path[path.size() - 1]), spot.position) > std::max(reach, k_arrive)) {
+        if ((hurry && !actor.is_running()) ||
+            (!path.is_empty() &&
+             horizontal(SkydotWorld::godot_to_skyrim(path[path.size() - 1]), spot.position) > std::max(reach, k_arrive))) {
             actor.stop();
         }
     }
     m.walks = 0; // never "close enough" after a few walks: the distance decides
-    go(m, actor, spot, reach, seconds);
+    go(m, actor, spot, reach, seconds, hurry);
 }
 
 void SkydotAi::force_greet_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds) {
@@ -1908,7 +1912,9 @@ void SkydotAi::follow_step(Mind& m, SkydotActor& actor, const ai::Step& s, doubl
     }
     const double distance = horizontal(m.last, m.target->position);
     if (distance > far || (actor.is_walking() && distance > near)) {
-        chase(m, actor, *m.target, near, seconds);
+        // Far behind it runs, until it is within the max distance again.
+        const bool hurry = distance > far * k_follow_run_mult || (actor.is_running() && distance > far);
+        chase(m, actor, *m.target, near, seconds, hurry);
     } else if (actor.is_walking()) {
         actor.stop();
     }
@@ -1926,9 +1932,11 @@ void SkydotAi::escort_step(Mind& m, SkydotActor& actor, const ai::Step& s, doubl
     const double wait = s.number(3, k_escort_wait);
     if (escorted && escorted->ref != m.ref &&
         (escorted->space != m.space || horizontal(m.last, escorted->position) > wait)) {
-        // Behind: it waits, turned to the one it escorts.
+        // Behind: it waits, turned to the one it escorts. The walk it breaks off does not count
+        // towards "close enough".
         if (actor.is_walking()) {
             actor.stop();
+            m.walks = std::max(0, m.walks - 1);
         }
         if (escorted->space == m.space) {
             actor.set_look_target(SkydotWorld::skyrim_position(escorted->position));

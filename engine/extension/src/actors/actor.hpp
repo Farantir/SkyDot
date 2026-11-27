@@ -69,6 +69,7 @@ public:
     bool walk_straight(const godot::Vector3& target, bool run);
     void stop();
     bool is_walking() const { return !path_.is_empty(); }
+    bool is_running() const { return run_ && !path_.is_empty(); }
     godot::PackedVector3Array get_path() const { return path_; }
     /// "held", "idle", "walk" or "run".
     godot::String get_state() const;
