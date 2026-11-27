@@ -250,6 +250,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_perks", "ref"), &SkydotPapyrus::get_perks);
     godot::ClassDB::bind_method(D_METHOD("perk_conditions_met", "perk", "ref"), &SkydotPapyrus::perk_conditions_met);
     godot::ClassDB::bind_method(D_METHOD("sound_conditions_met", "sound", "ref"), &SkydotPapyrus::sound_conditions_met);
+    godot::ClassDB::bind_method(D_METHOD("music_track_conditions_met", "track"), &SkydotPapyrus::music_track_conditions_met);
+    godot::ClassDB::bind_method(D_METHOD("get_music_stack"), &SkydotPapyrus::get_music_stack);
     godot::ClassDB::bind_method(D_METHOD("perk_entry", "entry_point", "owner", "subjects", "value", "extra"),
                                 &SkydotPapyrus::perk_entry, DEFVAL(godot::Dictionary()));
     godot::ClassDB::bind_method(D_METHOD("perk_entry_spells", "entry_point", "owner", "subjects", "extra"),
@@ -342,6 +344,8 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("scene_package", PropertyInfo(Variant::INT, "actor"),
                                  PropertyInfo(Variant::INT, "package"), PropertyInfo(Variant::BOOL, "push")));
     ADD_SIGNAL(godot::MethodInfo("stop_sound", PropertyInfo(Variant::INT, "instance")));
+    // MusicType.Add and Remove changed the music stack (get_music_stack).
+    ADD_SIGNAL(godot::MethodInfo("music_changed"));
     ADD_SIGNAL(godot::MethodInfo("sound_volume", PropertyInfo(Variant::INT, "instance"),
                                  PropertyInfo(Variant::FLOAT, "volume")));
     // ObjectReference.Reset: the reference goes to a position (Skyrim space,
@@ -459,6 +463,7 @@ void SkydotPapyrus::reset() {
     ragdoll_positions_.clear();
     test_ids_.clear();
     sound_ids_.clear();
+    music_stack_.clear();
     quests_.clear();
     quest_info_.clear();
 }

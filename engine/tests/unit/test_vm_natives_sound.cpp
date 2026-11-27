@@ -121,3 +121,28 @@ TEST_CASE("StopInstance and SetInstanceVolume pass the instance and the volume o
     CHECK(events.volumes[0].first == 4);
     CHECK(events.volumes[0].second == 0.5);
 }
+
+TEST_CASE("MusicType.Add stacks the type, a second Add moves it to the top, Remove takes it off", "[vm][natives]") {
+    FakeEvents events;
+    FakeSounds sounds;
+    Rig rig;
+    rig.add({.name = "MusicType",
+             .functions = {native_function("Add", {}, "None", false), native_function("Remove", {}, "None", false)}});
+    auto add = global_function("add", {{"m", "MusicType"}});
+    add.add(Op::callmethod, {ident("Add"), ident("m"), ident("::NoneVar")});
+    auto remove = global_function("remove", {{"m", "MusicType"}});
+    remove.add(Op::callmethod, {ident("Remove"), ident("m"), ident("::NoneVar")});
+    rig.add(script("Caller", {add, remove}));
+    skydot::vm::bind_sound_natives(rig.vm, sounds, events);
+
+    const auto boss = rig.vm.object(0xD777A, "MusicType");
+    const auto special = rig.vm.object(0x8DC7C, "MusicType");
+    rig.call("caller", "add", {boss});
+    rig.call("caller", "add", {special});
+    CHECK(sounds.music == std::vector<std::uint32_t>{0xD777A, 0x8DC7C});
+    rig.call("caller", "add", {boss});
+    CHECK(sounds.music == std::vector<std::uint32_t>{0x8DC7C, 0xD777A});
+    rig.call("caller", "remove", {special});
+    rig.call("caller", "remove", {special});
+    CHECK(sounds.music == std::vector<std::uint32_t>{0xD777A});
+}

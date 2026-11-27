@@ -90,6 +90,15 @@ godot::PackedInt64Array get_sound_alternates(const WorldData& data, std::int64_t
 godot::Array get_region_sounds(const WorldData& data, std::int64_t world, double x, double y);
 godot::Dictionary get_region_sound_data(const WorldData& data, std::int64_t region);
 godot::Array get_weather_sounds(const WorldData& data, std::int64_t weather);
+godot::Dictionary get_music_type(const WorldData& data, std::int64_t id);
+godot::PackedInt64Array get_music_types(const WorldData& data);
+godot::Dictionary get_music_track(const WorldData& data, std::int64_t id);
+std::int64_t find_music_type(const WorldData& data, const godot::String& editor_id);
+std::int64_t find_music_track(const WorldData& data, const godot::String& editor_id);
+std::int64_t get_cell_music(const WorldData& data, std::int64_t cell);
+std::int64_t get_world_music(const WorldData& data, std::int64_t world);
+std::int64_t get_location_music(const WorldData& data, std::int64_t location);
+godot::Array get_region_music(const WorldData& data, std::int64_t world, double x, double y);
 std::int64_t get_weather_classification(const WorldData& data, std::int64_t weather);
 godot::Dictionary get_footstep_set(const WorldData& data, std::int64_t id);
 godot::Dictionary get_footstep(const WorldData& data, std::int64_t id);

@@ -74,6 +74,15 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_sound_alternates", "id"), &SkydotWorld::get_sound_alternates);
     godot::ClassDB::bind_method(D_METHOD("get_region_sounds", "world", "x", "y"), &SkydotWorld::get_region_sounds);
     godot::ClassDB::bind_method(D_METHOD("get_region_sound_data", "region"), &SkydotWorld::get_region_sound_data);
+    godot::ClassDB::bind_method(D_METHOD("get_music_type", "id"), &SkydotWorld::get_music_type);
+    godot::ClassDB::bind_method(D_METHOD("get_music_types"), &SkydotWorld::get_music_types);
+    godot::ClassDB::bind_method(D_METHOD("get_music_track", "id"), &SkydotWorld::get_music_track);
+    godot::ClassDB::bind_method(D_METHOD("find_music_type", "editor_id"), &SkydotWorld::find_music_type);
+    godot::ClassDB::bind_method(D_METHOD("find_music_track", "editor_id"), &SkydotWorld::find_music_track);
+    godot::ClassDB::bind_method(D_METHOD("get_cell_music", "cell"), &SkydotWorld::get_cell_music);
+    godot::ClassDB::bind_method(D_METHOD("get_world_music", "world"), &SkydotWorld::get_world_music);
+    godot::ClassDB::bind_method(D_METHOD("get_location_music", "location"), &SkydotWorld::get_location_music);
+    godot::ClassDB::bind_method(D_METHOD("get_region_music", "world", "x", "y"), &SkydotWorld::get_region_music);
     godot::ClassDB::bind_method(D_METHOD("get_weather_sounds", "weather"), &SkydotWorld::get_weather_sounds);
     godot::ClassDB::bind_method(D_METHOD("get_weather_classification", "weather"), &SkydotWorld::get_weather_classification);
     godot::ClassDB::bind_method(D_METHOD("get_footstep_set", "id"), &SkydotWorld::get_footstep_set);
@@ -356,6 +365,15 @@ Dictionary SkydotWorld::get_image_space_modifier(std::int64_t id) const {
 godot::PackedInt64Array SkydotWorld::get_sound_alternates(std::int64_t id) const { return queries::get_sound_alternates(data(), id); }
 godot::Array SkydotWorld::get_region_sounds(std::int64_t world, double x, double y) const { return queries::get_region_sounds(data(), world, x, y); }
 Dictionary SkydotWorld::get_region_sound_data(std::int64_t region) const { return queries::get_region_sound_data(data(), region); }
+Dictionary SkydotWorld::get_music_type(std::int64_t id) const { return queries::get_music_type(data(), id); }
+godot::PackedInt64Array SkydotWorld::get_music_types() const { return queries::get_music_types(data()); }
+Dictionary SkydotWorld::get_music_track(std::int64_t id) const { return queries::get_music_track(data(), id); }
+std::int64_t SkydotWorld::find_music_type(const String& editor_id) const { return queries::find_music_type(data(), editor_id); }
+std::int64_t SkydotWorld::find_music_track(const String& editor_id) const { return queries::find_music_track(data(), editor_id); }
+std::int64_t SkydotWorld::get_cell_music(std::int64_t cell) const { return queries::get_cell_music(data(), cell); }
+std::int64_t SkydotWorld::get_world_music(std::int64_t world) const { return queries::get_world_music(data(), world); }
+std::int64_t SkydotWorld::get_location_music(std::int64_t location) const { return queries::get_location_music(data(), location); }
+godot::Array SkydotWorld::get_region_music(std::int64_t world, double x, double y) const { return queries::get_region_music(data(), world, x, y); }
 godot::Array SkydotWorld::get_weather_sounds(std::int64_t weather) const { return queries::get_weather_sounds(data(), weather); }
 std::int64_t SkydotWorld::get_weather_classification(std::int64_t weather) const { return queries::get_weather_classification(data(), weather); }
 Dictionary SkydotWorld::get_footstep_set(std::int64_t id) const { return queries::get_footstep_set(data(), id); }

@@ -163,6 +163,19 @@ std::unique_ptr<vm::WorldAccess> SkydotPapyrus::new_world_host() { return std::m
 struct SkydotPapyrus::SoundHost final : vm::SoundHost {
     explicit SoundHost(SkydotPapyrus& owner) : owner_(owner) {}
     std::int64_t new_sound_instance() override { return owner_.new_sound_instance(); }
+    void add_music(std::uint32_t music) override {
+        if (music == 0) {
+            return;
+        }
+        std::erase(owner_.music_stack_, music);
+        owner_.music_stack_.push_back(music);
+        owner_.emit_signal("music_changed");
+    }
+    void remove_music(std::uint32_t music) override {
+        if (std::erase(owner_.music_stack_, music) > 0) {
+            owner_.emit_signal("music_changed");
+        }
+    }
     SkydotPapyrus& owner_;
 };
 

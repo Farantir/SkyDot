@@ -39,6 +39,14 @@ void bind_sound_natives(Vm& v, SoundHost& sounds, WorldEvents& events) {
                             .wait_for = "sound:" + std::to_string(instance),
                             .after = [&events, sound, source, instance] { events.play_sound(sound, source, instance); }};
     });
+    v.bind("MusicType", "Add", [&sounds](NativeCall& c) {
+        sounds.add_music(c.self.form());
+        return NativeResult{};
+    });
+    v.bind("MusicType", "Remove", [&sounds](NativeCall& c) {
+        sounds.remove_music(c.self.form());
+        return NativeResult{};
+    });
     v.bind("Sound", "StopInstance", [&events](NativeCall& c) {
         events.stop_sound(static_cast<std::int64_t>(arg(c, 0).i()));
         return NativeResult{};

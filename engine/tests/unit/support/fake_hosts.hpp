@@ -24,6 +24,12 @@ struct FakeSounds final : skydot::vm::SoundHost {
     std::int64_t next = 1;
     bool exhausted = false;
     std::int64_t new_sound_instance() override { return exhausted ? 0 : next++; }
+    std::vector<std::uint32_t> music;
+    void add_music(std::uint32_t m) override {
+        std::erase(music, m);
+        music.push_back(m);
+    }
+    void remove_music(std::uint32_t m) override { std::erase(music, m); }
 };
 
 /// A quest host over a QuestStates of its own: starting and stopping set the

@@ -217,8 +217,30 @@ public:
     /// (x, y), game units: [{id, editor_id, priority, override, sounds:
     /// [{sound, flags, chance}]}].
     godot::Array get_region_sounds(std::int64_t world, double x, double y) const;
-    /// One region's sounds as get_region_sounds' entries; empty if none.
+    /// One region's sounds as get_region_sounds' entries (with `music`, its
+    /// RDMO); empty if none.
     godot::Dictionary get_region_sound_data(std::int64_t region) const;
+    /// Music (format 50, engine/docs/sound.md). MUSC: id, editor_id, flags and
+    /// its bits (plays_one_selection, abrupt_transition, cycle_tracks,
+    /// maintain_track_order, ducks_current_track, doesnt_queue), priority,
+    /// ducking_db, fade_duration (s), tracks (MUST ids); empty if unknown.
+    godot::Dictionary get_music_type(std::int64_t id) const;
+    /// Every MUSC id, ascending.
+    godot::PackedInt64Array get_music_types() const;
+    /// MUST: id, editor_id, type ("single", "palette", "silent", "unknown"),
+    /// duration, fade_out (s), file and finale (sound asset vpaths, "" if
+    /// none), cue_points (s), loop_begin, loop_end (s), loop_count (0 none),
+    /// has_conditions, tracks (a palette's MUST ids, 0 entries kept).
+    godot::Dictionary get_music_track(std::int64_t id) const;
+    std::int64_t find_music_type(const godot::String& editor_id) const;
+    std::int64_t find_music_track(const godot::String& editor_id) const;
+    /// The MUSC of a cell (XCMO), worldspace (ZNAM) or location (NAM1); 0 if none.
+    std::int64_t get_cell_music(std::int64_t cell) const;
+    std::int64_t get_world_music(std::int64_t world) const;
+    std::int64_t get_location_music(std::int64_t location) const;
+    /// The regions of `world` (or its parent) with music whose areas hold
+    /// (x, y), game units, as get_region_sounds' entries (`music` set).
+    godot::Array get_region_music(std::int64_t world, double x, double y) const;
     /// WTHR SNAM: [{sound, type}].
     godot::Array get_weather_sounds(std::int64_t weather) const;
     /// `Weather.classification` bits: 1 pleasant, 2 cloudy, 4 rainy, 8 snow (the

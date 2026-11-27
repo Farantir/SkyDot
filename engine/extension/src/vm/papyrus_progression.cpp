@@ -279,4 +279,22 @@ bool SkydotPapyrus::sound_conditions_met(std::int64_t sound, std::int64_t ref) {
     return conditions::conditions_pass(d->conditions(), condition_world(), ctx);
 }
 
+bool SkydotPapyrus::music_track_conditions_met(std::int64_t track) {
+    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
+    const auto* t = root != nullptr ? lookup(root->music_tracks(), static_cast<std::uint32_t>(track)) : nullptr;
+    if (t == nullptr || t->conditions() == nullptr || t->conditions()->size() == 0) {
+        return true;
+    }
+    const conditions::ConditionContext ctx{.subject = k_player_ref, .target = 0, .quest = 0};
+    return conditions::conditions_pass(t->conditions(), condition_world(), ctx);
+}
+
+godot::PackedInt64Array SkydotPapyrus::get_music_stack() const {
+    godot::PackedInt64Array out;
+    for (const auto music : music_stack_) {
+        out.push_back(static_cast<std::int64_t>(music));
+    }
+    return out;
+}
+
 } // namespace skydot

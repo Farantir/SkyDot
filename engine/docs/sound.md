@@ -121,6 +121,31 @@ FSTPs of walk, run, sprint, sneak and swim one after another. ARMA SNDD names
 the set; the sound is the IPDS entry for the material under the foot (IPCT
 sound). world.fb `footsteps`, `footstep_sets`, `ArmorAddon.footstep_set`.
 
+### MUSC, MUST, music (50 types and 258 tracks in Skyrim.esm, 64 types in SE)
+
+Layouts checked against Skyrim.esm; names from xEdit. MUSC: FNAM flags (bit 0
+plays one selection, 1 abrupt transition, 2 cycle tracks, 3 maintain track
+order, 5 ducks current track, 6 doesn't queue (SE)); PNAM priority (u16) and
+ducking (u16, hundredths of a dB: 2000..10000); WNAM fade in seconds; TNAM the
+MUSTs, repeats kept (the explore types list a track and a silent spacer in
+turn). MUST: CNAM a hash, 0x6ED7E048 single (240, each with an ANAM),
+0x23F678C3 palette (13: FLTV duration, DNAM fade-out, SNAM its tracks with
+null entries), 0xA1A9C4D5 silent (5: FLTV seconds); FNAM cue points and BNAM
+a finale on the 10 combat tracks, LNAM loop begin, end and count on one
+(MUSSovngardeChantLP: 0 to 209.24 s, 90 times); CTDA on 48 (time of day for
+the explore tracks). What cue points and finales do is assumed: the finale
+plays when combat ends, at the next cue point. ANAM and BNAM name
+`Data\Music\...wav`; the archives hold only the `.xwm`, which the pack keeps
+as `music/...xwm` sound assets (Ogg Vorbis; `Sounds.load_stream` plays them).
+
+Where music is chosen: CELL XCMO (397 cells), WRLD ZNAM (27; Tamriel's is
+`_NONE`), REGN RDMO in the RDAT type 7 entry (28, its priority shared with
+the sounds), LCTN NAM1 (8), and the default objects DFMS (default,
+MUSExploreTestb), BTMS (battle, MUSCombat), DTMS (death), SCMS and LUMS
+(success, level up), DCMS (dungeon cleared). Papyrus pushes types with
+`MusicType.Add`. How the game ranks them (priority, stack order) is for the
+player.
+
 ## Queries
 
 `SkydotWorld`: `get_sound_descriptor`, `get_sound_output_model`,
@@ -129,6 +154,20 @@ sound). world.fb `footsteps`, `footstep_sets`, `ArmorAddon.footstep_set`.
 `get_region_sound_data(region)`, `get_weather_sounds`, `get_footstep_set`,
 `get_footstep`; `get_cell` has `acoustic_space`. `SkydotPapyrus.
 sound_conditions_met(sound, ref)` runs a descriptor's conditions.
+
+Music: `get_music_types()` (every MUSC id), `get_music_type(id)` (id,
+editor_id, flags with plays_one_selection, abrupt_transition, cycle_tracks,
+maintain_track_order, ducks_current_track, doesnt_queue, priority,
+ducking_db, fade_duration, tracks),
+`get_music_track(id)` (id, editor_id, type "single" / "palette" / "silent" /
+"unknown", duration, fade_out, file, finale, cue_points, loop_begin, loop_end,
+loop_count, has_conditions, tracks), `find_music_type(editor_id)`,
+`find_music_track(editor_id)`, `get_cell_music(cell)`, `get_world_music(world)`,
+`get_location_music(location)`, `get_region_music(world, x, y)` (the covering
+regions with music, as get_region_sounds' entries, `music` set);
+`get_default_object("DFMS")` and the other slots. `SkydotPapyrus.
+music_track_conditions_met(track)` runs a track's conditions on the player;
+`get_music_stack()` and the signal `music_changed` are MusicType.Add's stack.
 
 ## Playing (game/game/sounds.gd, game/game/ambience.gd)
 
@@ -183,6 +222,7 @@ sound_conditions_met(sound, ref)` runs a descriptor's conditions.
   region one-shot distances too.
 - **Not done:** reverb (REVB, SOPM reverb send), priority and voice limits,
   loudness culling, rumble, footsteps (data in world.fb 42: FSTS/FSTP/ARMA
-  SNDD; needs the material under the foot), thunder, music (W7), dialogue
+  SNDD; needs the material under the foot), thunder, music playback (the data
+  and queries are above), dialogue
   voices' categories and output models (speech.gd keeps Godot's inverse
   distance).

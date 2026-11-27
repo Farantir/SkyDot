@@ -625,6 +625,12 @@ public:
     /// Whether the SNDR's conditions pass, run on `ref` (the source; 0 the
     /// player). True if it has none or is unknown.
     bool sound_conditions_met(std::int64_t sound, std::int64_t ref);
+    /// Whether the MUST's conditions pass, run on the player. True if it has
+    /// none or is unknown.
+    bool music_track_conditions_met(std::int64_t track);
+    /// MusicType.Add's stack (MUSC ids, the last added last); `music_changed`
+    /// fires when it changes. Saved in PAPY.
+    godot::PackedInt64Array get_music_stack() const;
     /// The perk entry point `entry_point` (perks::EntryPoint) applied to `value` for `owner`'s perks (an actor
     /// reference; the player 0x14): `subjects` are the condition subjects of tab 0 (the owner), 1, 2 (a weapon
     /// base, a target, a spell, an item ...). `extra` (all optional): advance_skill, advance_action,
@@ -931,6 +937,7 @@ private:
     /// Playback instances (id_ranges::sound_instances): Sound.Play's and the
     /// game layer's, from `new_sound_instance`.
     vm::IdAllocator sound_ids_{vm::id_ranges::sound_instances};
+    std::vector<std::uint32_t> music_stack_;
     godot::Ref<SkydotPack> pack_;
     godot::Ref<SkydotClock> clock_;
     /// Which of the clock's values a global form is (found by editor id), if any.
@@ -1041,6 +1048,7 @@ private:
         vm::Triggers::Saved triggers;
         vm::IdAllocator test_ids{vm::id_ranges::test_instances};
         vm::IdAllocator sound_ids{vm::id_ranges::sound_instances};
+        std::vector<std::uint32_t> music;
         vm::QuestStates quests;
     };
     struct PendingLoad {

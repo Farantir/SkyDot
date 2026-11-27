@@ -8,7 +8,9 @@
 #include "data/text.hpp"
 #include "build/refs.hpp"
 
+#include "skydot_formats/flags.hpp"
 #include "skydot_formats/vpath.hpp"
+#include "world_generated.h"
 
 using godot::Array;
 using godot::Dictionary;
@@ -167,7 +169,23 @@ Dictionary region_sound_dict(const bethconv::pack::wfb::Region& r) {
         }
     }
     out["sounds"] = sounds;
+    out["music"] = static_cast<std::int64_t>(r.music());
     return out;
+}
+
+/// The id of the record named `editor_id` (any case) in `all`, 0 if none.
+template <typename List>
+std::int64_t find_by_editor_id(const List* all, const String& editor_id) {
+    if (all == nullptr) {
+        return 0;
+    }
+    const std::string wanted = formats::ascii_lower(std::string(editor_id.utf8().get_data()));
+    for (const auto* r : *all) {
+        if (r->editor_id() != nullptr && formats::ascii_lower(r->editor_id()->string_view()) == wanted) {
+            return r->id();
+        }
+    }
+    return 0;
 }
 
 } // namespace
@@ -194,6 +212,119 @@ Array get_region_sounds(const WorldData& data, std::int64_t world, double x, dou
         }
     }
     return out;
+}
+
+Array get_region_music(const WorldData& data, std::int64_t world, double x, double y) {
+    Array out;
+    const auto* regions = data.root() != nullptr ? data.root()->regions() : nullptr;
+    if (regions == nullptr) {
+        return out;
+    }
+    // A child worldspace uses its parent's regions too, as the sounds do.
+    const auto* ws = data.world_ptr(static_cast<std::uint32_t>(world));
+    const std::uint32_t parent = ws != nullptr ? ws->parent() : 0;
+    for (const auto* r : *regions) {
+        if (r->music() == 0 || r->areas() == nullptr ||
+            (r->world() != static_cast<std::uint32_t>(world) && (parent == 0 || r->world() != parent))) {
+            continue;
+        }
+        for (const auto* area : *r->areas()) {
+            if (inside_polygon(area->points(), x, y)) {
+                out.push_back(region_sound_dict(*r));
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+godot::PackedInt64Array get_music_types(const WorldData& data) {
+    godot::PackedInt64Array out;
+    if (const auto* all = data.root() != nullptr ? data.root()->music_types() : nullptr) {
+        for (const auto* m : *all) {
+            out.push_back(static_cast<std::int64_t>(m->id()));
+        }
+    }
+    return out;
+}
+
+Dictionary get_music_type(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* m = lookup(data.root() != nullptr ? data.root()->music_types() : nullptr,
+                           static_cast<std::uint32_t>(id));
+    if (m == nullptr) {
+        return out;
+    }
+    using F = bethconv::pack::wfb::MusicTypeFlags;
+    out["id"] = static_cast<std::int64_t>(m->id());
+    out["editor_id"] = to_godot(m->editor_id());
+    out["flags"] = static_cast<std::int64_t>(m->flags());
+    out["plays_one_selection"] = formats::has_flag(m->flags(), F::plays_one_selection);
+    out["abrupt_transition"] = formats::has_flag(m->flags(), F::abrupt_transition);
+    out["cycle_tracks"] = formats::has_flag(m->flags(), F::cycle_tracks);
+    out["maintain_track_order"] = formats::has_flag(m->flags(), F::maintain_track_order);
+    out["ducks_current_track"] = formats::has_flag(m->flags(), F::ducks_current_track);
+    out["doesnt_queue"] = formats::has_flag(m->flags(), F::doesnt_queue);
+    out["priority"] = static_cast<std::int64_t>(m->priority());
+    out["ducking_db"] = static_cast<double>(m->ducking()) / 100.0;
+    out["fade_duration"] = static_cast<double>(m->fade_duration());
+    out["tracks"] = ids_array(m->tracks());
+    return out;
+}
+
+Dictionary get_music_track(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* t = lookup(data.root() != nullptr ? data.root()->music_tracks() : nullptr,
+                           static_cast<std::uint32_t>(id));
+    if (t == nullptr) {
+        return out;
+    }
+    static constexpr const char* k_types[] = {"single", "palette", "silent", "unknown"};
+    const auto type = static_cast<std::size_t>(t->track_type());
+    out["id"] = static_cast<std::int64_t>(t->id());
+    out["editor_id"] = to_godot(t->editor_id());
+    out["type"] = String(k_types[type < 4 ? type : 3]);
+    out["duration"] = static_cast<double>(t->duration());
+    out["fade_out"] = static_cast<double>(t->fade_out());
+    out["file"] = to_godot(t->file());
+    out["finale"] = to_godot(t->finale());
+    godot::PackedFloat64Array cues;
+    if (t->cue_points() != nullptr) {
+        for (const float c : *t->cue_points()) {
+            cues.push_back(static_cast<double>(c));
+        }
+    }
+    out["cue_points"] = cues;
+    out["loop_begin"] = static_cast<double>(t->loop_begin());
+    out["loop_end"] = static_cast<double>(t->loop_end());
+    out["loop_count"] = static_cast<std::int64_t>(t->loop_count());
+    out["has_conditions"] = t->conditions() != nullptr && t->conditions()->size() > 0;
+    out["tracks"] = ids_array(t->tracks());
+    return out;
+}
+
+std::int64_t find_music_type(const WorldData& data, const String& editor_id) {
+    return find_by_editor_id(data.root() != nullptr ? data.root()->music_types() : nullptr, editor_id);
+}
+
+std::int64_t find_music_track(const WorldData& data, const String& editor_id) {
+    return find_by_editor_id(data.root() != nullptr ? data.root()->music_tracks() : nullptr, editor_id);
+}
+
+std::int64_t get_cell_music(const WorldData& data, std::int64_t cell) {
+    const auto* c = data.cell_ptr(cell);
+    return c != nullptr ? static_cast<std::int64_t>(c->music()) : 0;
+}
+
+std::int64_t get_world_music(const WorldData& data, std::int64_t world) {
+    const auto* w = data.world_ptr(static_cast<std::uint32_t>(world));
+    return w != nullptr ? static_cast<std::int64_t>(w->music()) : 0;
+}
+
+std::int64_t get_location_music(const WorldData& data, std::int64_t location) {
+    const auto* l = lookup(data.root() != nullptr ? data.root()->locations() : nullptr,
+                           static_cast<std::uint32_t>(location));
+    return l != nullptr ? static_cast<std::int64_t>(l->music()) : 0;
 }
 
 Dictionary get_region_sound_data(const WorldData& data, std::int64_t region) {

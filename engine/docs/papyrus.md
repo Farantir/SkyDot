@@ -160,6 +160,7 @@ shows XPRM bounds doubled. Not checked against the game.
 | Cell | `IsInterior`, `IsAttached` (its references were handed to the VM; a cell never detaches) |
 | EffectShader | `Play`, `Stop` |
 | Sound | `Play` (signal `play_sound`: sound, source reference, instance id; the game layer plays it, `game/game/sounds.gd`), `PlayAndWait` (waits for `notify_sound_finished(instance)`, which the game layer sends when the clip ends, or 30 s), `StopInstance` (signal `stop_sound`), `SetInstanceVolume` (signal `sound_volume`) |
+| MusicType | `Add` (onto the music stack, or to its top if already on it; assumed), `Remove`; `SkydotPapyrus.get_music_stack()` (MUSC ids, the last added last) and the signal `music_changed`; the stack is saved in PAPY (version 3) |
 | Weapon | `Fire` (signal `fire_weapon`: the game layer launches the ammo's projectile, `game/game/projectiles.gd`) |
 | Quest | `Start`, `Stop`, `Reset`, `IsRunning`, `IsStopped`, `IsStarting`, `IsStopping`, `IsCompleted`, `CompleteQuest`, `GetStage`, `GetCurrentStageID`, `SetStage`, `SetCurrentStageID`, `GetStageDone`, `IsStageDone`, `IsActive`, `SetActive`, `GetAlias`, `SetObjectiveDisplayed/Completed/Failed`, `IsObjectiveDisplayed/Completed/Failed`, `CompleteAllObjectives`, `FailAllObjectives`, `UpdateCurrentInstanceGlobal`, `PrepareForReinitializing` |
 | Alias | `GetOwningQuest`, `GetID`, `GetName`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
@@ -395,7 +396,7 @@ results, scheduled host calls, the clock and the random state), INVT, MAGC (opti
 (behaviour graph snapshots), FLST (forms added to lists), PLCD (placed
 references and, from version 2, the forgotten ids free for reuse) and DEST (destruction), then RFST (what scripts changed per
 reference: enabled, open, locked, blocked, moved), PAPY (attached references,
-who is inside which trigger, actor positions) and QUST (quests, alias handles
+who is inside which trigger, actor positions, the music stack) and QUST (quests, alias handles
 and fills, globals). The viewer's SaveService adds PLYR (the place and the
 camera) and writes through a temporary file and a rename (F5, F9, `--save-to`,
 `--load`).

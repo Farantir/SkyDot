@@ -19,6 +19,11 @@ public:
     /// A new playback instance id; 0 if the ids are used up (the host
     /// reports that itself).
     [[nodiscard]] virtual std::int64_t new_sound_instance() = 0;
+
+    /// MusicType.Add and Remove: the music stack, in Add order (a type added
+    /// again moves to the top). The game layer's music player reads it.
+    virtual void add_music(std::uint32_t music) = 0;
+    virtual void remove_music(std::uint32_t music) = 0;
 };
 
 } // namespace skydot::vm

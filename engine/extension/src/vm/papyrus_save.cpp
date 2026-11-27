@@ -9,7 +9,8 @@
 //         is refused: form ids would map to the wrong objects.
 //   PAPY  u32 count + the references whose scripts were attached; u32 count
 //         of triggers, per trigger the ref and its actors (u32 count + ids);
-//         u32 count of actors with f64 x3 position; u32 next form id
+//         u32 count of actors with f64 x3 position; u32 next form id; u32
+//         count + the music stack (MUSC ids, version 3)
 //   ITST  (optional) resolved owners, leveled actor picks and equipment, state/item_states.hpp
 //   CRFT  (optional) created potions and alchemy knowledge, state/created_forms.hpp
 //   HRVS  (optional) harvested references, vm/harvest.hpp
@@ -39,7 +40,7 @@ using save::ByteWriter;
 namespace {
 
 constexpr std::uint32_t k_section_version = 1;
-constexpr std::uint32_t k_papy_version = 2; // 2: the sound instance counter
+constexpr std::uint32_t k_papy_version = 3; // 2: the sound instance counter, 3: the music stack
 /// An attached ref: ref (u32).
 constexpr std::size_t k_attached_ref_min_bytes = 4;
 /// A plugin in the load order: name (u32 length).
@@ -81,6 +82,10 @@ void SkydotPapyrus::write_host(save::SaveWriter& out) const {
     triggers_.write(p);
     p.u32(test_ids_.next());
     p.u32(sound_ids_.next());
+    p.u32(static_cast<std::uint32_t>(music_stack_.size()));
+    for (const auto music : music_stack_) {
+        p.u32(music);
+    }
     out.add("PAPY", k_papy_version, p.out);
 
     out.add("QUST", vm::QuestStates::k_section_version, quests_.save());
@@ -109,9 +114,19 @@ bool SkydotPapyrus::decode_host(const save::SaveReader& file, HostSnapshot& out,
     if (!vm::Triggers::read(r, out.triggers)) {
         return fail("PAPY");
     }
-    std::uint32_t next_test = 0, next_sound = 0;
-    if (!r.u32(next_test) || !r.u32(next_sound) || !r.at_end() || !out.test_ids.restore(next_test) ||
-        !out.sound_ids.restore(next_sound)) {
+    std::uint32_t next_test = 0, next_sound = 0, music = 0;
+    if (!r.u32(next_test) || !r.u32(next_sound) || !out.test_ids.restore(next_test) ||
+        !out.sound_ids.restore(next_sound) || !r.count(music, 4)) {
+        return fail("PAPY");
+    }
+    for (std::uint32_t i = 0; i < music; ++i) {
+        std::uint32_t id = 0;
+        if (!r.u32(id)) {
+            return fail("PAPY");
+        }
+        out.music.push_back(id);
+    }
+    if (!r.at_end()) {
         return fail("PAPY");
     }
 
@@ -392,6 +407,8 @@ godot::Error SkydotPapyrus::commit_load() {
     triggers_.restore(std::move(host.triggers));
     test_ids_ = host.test_ids;
     sound_ids_ = host.sound_ids;
+    music_stack_ = std::move(host.music);
+    emit_signal("music_changed");
     quests_ = std::move(host.quests);
     // The kept placed references are built again.
     for (const auto& [id, placed] : vm_->placed().refs()) {
