@@ -101,6 +101,7 @@ void EnvironmentCollector::on_worldspace(const record::MergedRecord& merged, io:
         }
         out.water = shared_.global(merged, w->water, failed);
         out.climate = shared_.global(merged, w->climate, failed);
+        out.music = shared_.global(merged, w->music, failed);
         out.min_x = w->min_x;
         out.min_y = w->min_y;
         out.max_x = w->max_x;
@@ -395,7 +396,8 @@ void EnvironmentCollector::on_precipitation(const record::MergedRecord& merged,
     });
 }
 
-/// Regions with a weather list (RDAT type 3) or sounds (RDAT type 7, RDSA);
+/// Regions with a weather list (RDAT type 3) or sounds or music (RDAT type 7,
+/// RDSA, RDMO);
 /// the others are not needed yet.
 void EnvironmentCollector::on_region(const record::MergedRecord& merged, io::SpanReader& data,
                                      const record::FormContext& form_ctx) {
@@ -418,6 +420,7 @@ void EnvironmentCollector::on_region(const record::MergedRecord& merged, io::Spa
             for (const auto& s : entry.sounds) {
                 out.sounds.emplace_back(shared_.global(merged, s.sound, failed), s.flags, s.chance);
             }
+            out.music = shared_.global(merged, entry.music, failed);
             continue;
         }
         if (entry.type != k_weather || entry.weathers.empty()) {
@@ -430,7 +433,7 @@ void EnvironmentCollector::on_region(const record::MergedRecord& merged, io::Spa
                                       shared_.global(merged, w.global, failed));
         }
     }
-    if (out.weathers.empty() && out.sounds.empty()) {
+    if (out.weathers.empty() && out.sounds.empty() && out.music == 0) {
         return;
     }
     for (const auto& area : region->areas) {

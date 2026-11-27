@@ -375,6 +375,8 @@ table Cell {
     owners: [RefOwner];
     /// Sorted by ref (format 48).
     patrol_points: [PatrolPoint];
+    /// XCMO (format 50): a MusicType in `music_types`; 0 if none.
+    music: uint32;
 }
 
 /// REFR XMRK (format 43): a map marker, the reference that stands for a
@@ -1097,6 +1099,9 @@ table Region {
     sounds: [RegionSound];
     sound_priority: ubyte;
     sound_override: bool;
+    /// RDMO (format 50), in the RDAT type 7 entry: a MusicType in
+    /// `music_types`; 0 if none. A region with music is in `regions` too.
+    music: uint32;
 }
 
 /// RDSA (format 42): a sound of a region. `flags`: bit 0 pleasant, 1 cloudy,
@@ -1311,6 +1316,9 @@ table Worldspace {
     map_offset_x: float;
     map_offset_y: float;
     map_offset_z: float;
+    /// ZNAM (format 50): a MusicType in `music_types`; 0 if none. Tamriel's
+    /// is `_NONE`; no parent flag passes it on.
+    music: uint32;
 }
 
 /// `QuestLogEntry.flags`.
@@ -2280,6 +2288,67 @@ table SoundDescriptor {
     fnam: uint32;
 }
 
+/// `MusicTrack.track_type`: MUST CNAM, a hash (xEdit's names): 0x6ED7E048
+/// single, 0x23F678C3 palette, 0xA1A9C4D5 silent; `unknown` for any other.
+enum MusicTrackType : ubyte {
+    single,
+    palette,
+    silent,
+    unknown
+}
+
+/// MUST (format 50): a music track. Layouts checked against Skyrim.esm. A
+/// single track plays `file` (ANAM; Skyrim.esm's 240 all have one), a silent
+/// track is `duration` seconds of silence, a palette plays `tracks` (SNAM, in
+/// order, 0 entries kept as stored) for `duration` seconds and fades out over
+/// `fade_out` (DNAM). `file` and `finale` (BNAM, the ending played when the
+/// track is stopped early, assumed) are virtual paths of the `.xwm` the `.wav`
+/// they name stands for (sound assets, Ogg Vorbis). `cue_points` (FNAM,
+/// seconds) are where the track may be cut (assumed). LNAM: the loop from
+/// `loop_begin` to `loop_end` seconds, `loop_count` times (one vanilla track,
+/// count 90); `loop_count` 0 if none.
+table MusicTrack {
+    id: uint32 (key);
+    editor_id: string;
+    track_type: MusicTrackType;
+    duration: float;
+    fade_out: float;
+    file: string;
+    finale: string;
+    cue_points: [float];
+    loop_begin: float;
+    loop_end: float;
+    loop_count: uint32;
+    /// CTDA: when the track may be picked (run on the player, assumed).
+    conditions: [Condition];
+    tracks: [uint32];
+}
+
+/// `MusicType.flags`: MUSC FNAM (xEdit's names; bit 6 is SE only).
+enum MusicTypeFlags : uint32 (bit_flags) {
+    plays_one_selection,
+    abrupt_transition,
+    cycle_tracks,
+    maintain_track_order,
+    unknown4,
+    ducks_current_track,
+    doesnt_queue
+}
+
+/// MUSC (format 50): a music type, what cells, worldspaces, regions,
+/// locations, default objects (DFMS, BTMS, ...) and Papyrus pick. PNAM is the
+/// priority and ducking (hundredths of a dB), WNAM the fade in seconds, TNAM
+/// its MusicTracks in order, repeats kept.
+table MusicType {
+    id: uint32 (key);
+    editor_id: string;
+    flags: MusicTypeFlags;
+    priority: ushort;
+    ducking: ushort;
+    fade_duration: float;
+    tracks: [uint32];
+}
+
 /// SOUN (format 21): a sound marker, placed in cells (ambient loops).
 table SoundMarker {
     id: uint32 (key);
@@ -2688,6 +2757,8 @@ table Location {
     parent: uint32;
     /// KWDA, KYWD ids.
     keywords: [uint32];
+    /// NAM1 (format 50): a MusicType in `music_types`; 0 if none (8 in Skyrim.esm).
+    music: uint32;
 }
 
 /// RELA (format 26): DATA is 16 bytes, parent NPC, child NPC, rank (u16), two
@@ -2963,6 +3034,9 @@ table World {
     image_space_modifiers: [ImageSpaceModifier];
     /// Sorted by id (format 48).
     idle_markers: [IdleMarker];
+    /// Sorted by id (format 50).
+    music_types: [MusicType];
+    music_tracks: [MusicTrack];
 }
 
 root_type World;

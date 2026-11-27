@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 49;
+inline constexpr std::uint32_t k_world_format_version = 50;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -105,6 +105,9 @@ struct WorldStats {
     std::uint64_t sound_output_models{};
     /// SNCT, ASPC, REVB, FSTP and FSTS (format 42).
     std::uint64_t sound_categories{};
+    /// MUSC and MUST (format 50).
+    std::uint64_t music_types{};
+    std::uint64_t music_tracks{};
     std::uint64_t acoustic_spaces{};
     std::uint64_t reverbs{};
     std::uint64_t map_markers{};
@@ -284,6 +287,9 @@ public:
     [[nodiscard]] std::optional<wfb::ProjectileT> projectile(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::SoundDescriptorT> sound_descriptor(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::SoundMarkerT> sound_marker(std::uint32_t id) const;
+    /// MUSC and MUST (format 50).
+    [[nodiscard]] std::optional<wfb::MusicTypeT> music_type(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::MusicTrackT> music_track(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::SoundOutputModelT> sound_output_model(std::uint32_t id) const;
     /// SNCT, ASPC, REVB, FSTP and FSTS (format 42).
     [[nodiscard]] std::optional<wfb::SoundCategoryT> sound_category(std::uint32_t id) const;

@@ -1779,6 +1779,79 @@ io::ParseResult<SoundDescriptor> parse_sound_descriptor(io::SpanReader& data,
     return out;
 }
 
+io::ParseResult<MusicTrack> parse_music_track(io::SpanReader& data, const FormContext& ctx) {
+    MusicTrack out;
+    std::uint32_t declared = 0;
+    const auto walked = walk_fields(
+        data, FourCC{"MUST"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"CNAM"}) {
+                take_whole(failure, body, out.track_type);
+            } else if (field.type == FourCC{"FLTV"}) {
+                take_whole(failure, body, out.duration);
+            } else if (field.type == FourCC{"DNAM"}) {
+                take_whole(failure, body, out.fade_out);
+            } else if (field.type == FourCC{"ANAM"}) {
+                take(failure, read_zstring(body), out.file);
+            } else if (field.type == FourCC{"BNAM"}) {
+                take(failure, read_zstring(body), out.finale);
+            } else if (field.type == FourCC{"FNAM"}) {
+                while (!failure && body.remaining() >= sizeof(float)) {
+                    float point{};
+                    take(failure, body.get<float>(), point);
+                    out.cue_points.push_back(point);
+                }
+            } else if (field.type == FourCC{"LNAM"}) {
+                if (body.remaining() >= 12) {
+                    std::array<float, 2> loop{};
+                    take_whole(failure, body, loop[0], loop[1], out.loop_count);
+                    out.loop = loop;
+                }
+            } else if (field.type == FourCC{"SNAM"}) {
+                take(failure, read_formid_array(body), out.tracks);
+            } else if (read_ctda_field(out.conditions, declared, field, body, failure)) {
+                // A condition (CITC is its count).
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<MusicType> parse_music_type(io::SpanReader& data, const FormContext& ctx) {
+    MusicType out;
+    const auto walked = walk_fields(
+        data, FourCC{"MUSC"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"FNAM"}) {
+                take_whole(failure, body, out.flags);
+            } else if (field.type == FourCC{"PNAM"}) {
+                take_whole(failure, body, out.priority, out.ducking);
+            } else if (field.type == FourCC{"WNAM"}) {
+                take_whole(failure, body, out.fade_duration);
+            } else if (field.type == FourCC{"TNAM"}) {
+                take(failure, read_formid_array(body), out.tracks);
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 io::ParseResult<SoundMarker> parse_sound_marker(io::SpanReader& data, const FormContext& ctx) {
     SoundMarker out;
     const auto walked = walk_fields(

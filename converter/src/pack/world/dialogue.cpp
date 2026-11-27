@@ -133,6 +133,7 @@ void DialogueCollector::on_location(const record::MergedRecord& merged, io::Span
         out.name = l->name.text;
         out.parent = shared_.global(merged, l->parent, failed);
         out.keywords = shared_.global_all(merged, l->keywords.keywords, failed);
+        out.music = shared_.global(merged, l->music, failed);
     });
 }
 

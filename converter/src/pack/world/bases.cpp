@@ -83,6 +83,12 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"SNDR"}.value:
         on_sound_descriptor(merged, data, form_ctx);
         break;
+    case FourCC{"MUSC"}.value:
+        on_music_type(merged, data, form_ctx);
+        break;
+    case FourCC{"MUST"}.value:
+        on_music_track(merged, data, form_ctx);
+        break;
     case FourCC{"SOUN"}.value:
         on_sound_marker(merged, data, form_ctx);
         break;
@@ -399,6 +405,45 @@ void BaseCollector::on_sound_descriptor(const record::MergedRecord& merged, io::
         out.lnam_unknown2 = sndr->lnam_unknown2;
         out.rumble = sndr->rumble;
         out.fnam = sndr->fnam;
+    });
+}
+
+/// MUSC: FNAM flags, PNAM priority and ducking, WNAM fade, TNAM tracks.
+void BaseCollector::on_music_type(const record::MergedRecord& merged, io::SpanReader& data,
+                                  const record::FormContext& form_ctx) {
+    collect_into(shared_, music_types_, merged, record::parse_music_type(data, form_ctx),
+                 [&](auto& musc, wfb::MusicTypeT& out, bool& failed) {
+        out.flags = static_cast<wfb::MusicTypeFlags>(musc->flags);
+        out.priority = musc->priority;
+        out.ducking = musc->ducking;
+        out.fade_duration = musc->fade_duration;
+        out.tracks = shared_.global_all(merged, musc->tracks, failed);
+    });
+}
+
+/// MUST: the CNAM hash as a type, file names as `.xwm` vpaths.
+void BaseCollector::on_music_track(const record::MergedRecord& merged, io::SpanReader& data,
+                                   const record::FormContext& form_ctx) {
+    collect_into(shared_, music_tracks_, merged, record::parse_music_track(data, form_ctx),
+                 [&](auto& must, wfb::MusicTrackT& out, bool& failed) {
+        switch (must->track_type) {
+        case 0x6ED7E048U: out.track_type = wfb::MusicTrackType::single; break;
+        case 0x23F678C3U: out.track_type = wfb::MusicTrackType::palette; break;
+        case 0xA1A9C4D5U: out.track_type = wfb::MusicTrackType::silent; break;
+        default: out.track_type = wfb::MusicTrackType::unknown; break;
+        }
+        out.duration = must->duration;
+        out.fade_out = must->fade_out;
+        out.file = music_vpath(must->file);
+        out.finale = music_vpath(must->finale);
+        out.cue_points = must->cue_points;
+        if (must->loop) {
+            out.loop_begin = (*must->loop)[0];
+            out.loop_end = (*must->loop)[1];
+            out.loop_count = must->loop_count;
+        }
+        out.conditions = shared_.global_conditions(merged, must->conditions, failed);
+        out.tracks = shared_.global_all(merged, must->tracks, failed);
     });
 }
 
@@ -1462,6 +1507,8 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.ammos += ammos_.size();
     stats.projectiles += projectiles_.size();
     stats.sound_descriptors += sound_descriptors_.size();
+    stats.music_types += music_types_.size();
+    stats.music_tracks += music_tracks_.size();
     stats.sound_markers += sound_markers_.size();
     stats.sound_output_models += sound_output_models_.size();
     stats.sound_categories += sound_categories_.size();
@@ -1496,6 +1543,8 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.ammos, ammos_);
     move_into(world.projectiles, projectiles_);
     move_into(world.sound_descriptors, sound_descriptors_);
+    move_into(world.music_types, music_types_);
+    move_into(world.music_tracks, music_tracks_);
     move_into(world.sound_markers, sound_markers_);
     move_into(world.sound_output_models, sound_output_models_);
     move_into(world.sound_categories, sound_categories_);

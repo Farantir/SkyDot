@@ -434,6 +434,14 @@ std::optional<wfb::ProjectileT> WorldFile::projectile(std::uint32_t id) const {
     return unpack(lookup(impl_->root->projectiles(), id));
 }
 
+std::optional<wfb::MusicTypeT> WorldFile::music_type(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->music_types(), id));
+}
+
+std::optional<wfb::MusicTrackT> WorldFile::music_track(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->music_tracks(), id));
+}
+
 std::optional<wfb::SoundDescriptorT> WorldFile::sound_descriptor(std::uint32_t id) const {
     return unpack(lookup(impl_->root->sound_descriptors(), id));
 }

@@ -91,6 +91,7 @@ void collect_into(CollectContext& shared, Map& map, const record::MergedRecord& 
 /// prefix, and TXST paths to `Data\textures\`: normalized virtual paths, the
 /// engine's rule (formats/include/skydot_formats/vpath.hpp).
 using skydot::formats::model_vpath;
+using skydot::formats::music_vpath;
 using skydot::formats::sound_vpath;
 using skydot::formats::texture_vpath;
 

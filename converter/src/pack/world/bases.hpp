@@ -75,7 +75,7 @@ class BaseCollector {
 public:
     explicit BaseCollector(CollectContext& shared) : shared_(shared) {}
 
-    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD, MESG, EXPL, COBJ, MGEF, ENCH, SPEL, ARTO, GMST, IPDS, IPCT or CSTY; nothing for another type.
+    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, MUSC, MUST, SOUN, SOPM, KYWD, MESG, EXPL, COBJ, MGEF, ENCH, SPEL, ARTO, GMST, IPDS, IPCT or CSTY; nothing for another type.
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
@@ -123,6 +123,10 @@ private:
                              const record::FormContext& form_ctx);
     void on_sound_marker(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
+    void on_music_type(const record::MergedRecord& merged, io::SpanReader& data,
+                       const record::FormContext& form_ctx);
+    void on_music_track(const record::MergedRecord& merged, io::SpanReader& data,
+                        const record::FormContext& form_ctx);
     void on_explosion(const record::MergedRecord& merged, io::SpanReader& data,
                 const record::FormContext& form_ctx);
     void on_recipe(const record::MergedRecord& merged, io::SpanReader& data,
@@ -212,6 +216,8 @@ private:
     std::map<std::uint32_t, wfb::AmmoT> ammos_;
     std::map<std::uint32_t, wfb::ProjectileT> projectiles_;
     std::map<std::uint32_t, wfb::SoundDescriptorT> sound_descriptors_;
+    std::map<std::uint32_t, wfb::MusicTypeT> music_types_;
+    std::map<std::uint32_t, wfb::MusicTrackT> music_tracks_;
     std::map<std::uint32_t, wfb::SoundMarkerT> sound_markers_;
     std::map<std::uint32_t, wfb::SoundOutputModelT> sound_output_models_;
     std::map<std::uint32_t, wfb::SoundCategoryT> sound_categories_;

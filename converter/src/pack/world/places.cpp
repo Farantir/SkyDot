@@ -179,6 +179,7 @@ void PlaceCollector::on_cell(const record::MergedRecord& merged, io::SpanReader&
     out.sky_region = shared_.global(merged, cell->sky_region, failed);
     out.location = shared_.global(merged, cell->location, failed);
     out.acoustic_space = shared_.global(merged, cell->acoustic_space, failed);
+    out.music = shared_.global(merged, cell->music, failed);
     out.owner = shared_.global(merged, cell->owner, failed);
     out.owner_rank = cell->owner_rank;
     out.persistent = record::has_flag(merged.flags, record::RecordFlag::persistent);

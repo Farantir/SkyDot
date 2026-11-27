@@ -90,7 +90,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (49; 49 added quest alias packages (QuestAlias.packages, ALPC); 48 added patrol points (Cell.patrol_points, REFR XPRD and INAM) and idle markers (World.idle_markers, IDLM); 47 added the DIAL of a package's Topic input (PackageInput.topic, PDTO); 46 added the world map and fast travel data (below: Worldspace.map_*, MapMarker.radius/arrival_*); 45 added ownership: REFR and CELL XOWN with XRNK (Cell.owners, Cell.owner, Cell.owner_rank); 44 added the race's name (Race.name, FULL); 43 added map markers (Cell.map_markers, REFR XMRK),
+own `format_version` (50; 50 added music (World.music_types, MUSC; World.music_tracks, MUST; Cell, Worldspace, Region and Location music, XCMO, ZNAM, RDMO, NAM1); 49 added quest alias packages (QuestAlias.packages, ALPC); 48 added patrol points (Cell.patrol_points, REFR XPRD and INAM) and idle markers (World.idle_markers, IDLM); 47 added the DIAL of a package's Topic input (PackageInput.topic, PDTO); 46 added the world map and fast travel data (below: Worldspace.map_*, MapMarker.radius/arrival_*); 45 added ownership: REFR and CELL XOWN with XRNK (Cell.owners, Cell.owner, Cell.owner_rank); 44 added the race's name (Race.name, FULL); 43 added map markers (Cell.map_markers, REFR XMRK),
 default objects (DOBJ) and image space modifiers (IMAD, each curve's first key); 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
@@ -389,6 +389,16 @@ test bits by these names, through `has_flag` in
   (FSTP) and `footstep_sets` (FSTS). `Cell.acoustic_space` (XCAS), `Region.sounds` with
   `sound_priority` and `sound_override` (RDAT type 7; `regions` now holds regions with
   weathers or sounds), `Weather.sounds` (SNAM) and `ArmorAddon.footstep_set` (SNDD).
+- Music (format 50): `music_types` (MUSC: flags FNAM, priority and ducking
+  PNAM, fade WNAM, tracks TNAM) and `music_tracks` (MUST: the CNAM hash as
+  `track_type`, duration FLTV, fade-out DNAM, file ANAM and finale BNAM, cue
+  points FNAM, loop LNAM, conditions CTDA, a palette's tracks SNAM), sorted by
+  id. A MUST names `Data\Music\...wav`; the file is the music sound asset of
+  the `.xwm` with that name (`music/...xwm`, Ogg Vorbis, see "Sound assets"):
+  Skyrim's archives hold only the `.xwm`. Where music is chosen:
+  `Cell.music` (XCMO), `Worldspace.music` (ZNAM), `Region.music` (RDMO in RDAT
+  type 7; `regions` also holds regions with only music) and `Location.music`
+  (NAM1). The engine's default types are default objects (DFMS, BTMS, ...).
 - World map and fast travel (format 46; research in `skycompare-data/map-research.md`).
   `Worldspace`: `has_map_data` with `map_nw_x/y`, `map_se_x/y` (int16 cells), `map_min_height`,
   `map_max_height`, `map_initial_pitch` (degrees) from WRLD MNAM (28 bytes: two int32 leftovers,

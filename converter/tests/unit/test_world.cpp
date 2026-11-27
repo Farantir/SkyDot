@@ -519,6 +519,16 @@ void make_land(const TempDir& dir, bool short_vhgt = false) {
     rdwt.u32(80);
     rdwt.u32(0);
     bethconv::test::write_field(regn, "RDWT", rdwt);
+    // RDAT type 7 with only music (RDMO), as on WhiterunDragonsreachWeather.
+    ByteWriter rdat_sound;
+    rdat_sound.u32(7);
+    rdat_sound.u8(0);
+    rdat_sound.u8(50);
+    rdat_sound.u16(0);
+    bethconv::test::write_field(regn, "RDAT", rdat_sound);
+    ByteWriter rdmo;
+    rdmo.u32(0x0000'0C20);
+    bethconv::test::write_field(regn, "RDMO", rdmo);
     ByteWriter regns;
     bethconv::test::write_record(regns, "REGN", 0x0000'0C06, regn.span());
     top_group(file, "REGN", regns);
@@ -566,6 +576,9 @@ void make_land(const TempDir& dir, bool short_vhgt = false) {
         ByteWriter xccm;
         xccm.u32(0x0000'0C06);
         bethconv::test::write_field(payload, "XCCM", xccm);
+        ByteWriter xcmo;
+        xcmo.u32(0x0000'0C21);
+        bethconv::test::write_field(payload, "XCMO", xcmo);
         return payload;
     };
 
@@ -656,6 +669,9 @@ void make_land(const TempDir& dir, bool short_vhgt = false) {
     ByteWriter cnam;
     cnam.u32(0x0000'0C04);
     bethconv::test::write_field(wrld, "CNAM", cnam);
+    ByteWriter znam;
+    znam.u32(0x0000'0C22);
+    bethconv::test::write_field(wrld, "ZNAM", znam);
     ByteWriter worlds;
     bethconv::test::write_record(worlds, "WRLD", world, wrld.span());
     ByteWriter world_children;
@@ -831,12 +847,14 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     REQUIRE(worlds[0].has_defaults);
     CHECK(worlds[0].default_land_height == -2048.0F);
     CHECK(worlds[0].default_water_height == -14000.0F);
+    CHECK(worlds[0].music == 0x0000'0C22);
 
     // The persistent cell shares (0, 0) but is not the cell at (0, 0).
     CHECK(file->cell(0x0000'0D01)->persistent);
     const auto cell = file->cell_at_grid(0x0000'0D00, 0, 0);
     REQUIRE(cell.has_value());
     CHECK(cell->id == 0x0000'0D02);
+    CHECK(cell->music == 0x0000'0C21);
     CHECK_FALSE(cell->persistent);
     CHECK_FALSE(file->cell_at_grid(0x0000'0D00, 1, 0).has_value());
 
@@ -992,6 +1010,8 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(regions[0].areas[0]->points.size() == 8);
     REQUIRE(regions[0].weathers.size() == 1);
     CHECK((regions[0].weathers[0].weather() == 0x0000'0C03 && regions[0].weathers[0].chance() == 80));
+    CHECK(regions[0].music == 0x0000'0C20);
+    CHECK(regions[0].sounds.empty());
 }
 
 namespace {
@@ -1382,6 +1402,74 @@ void make_actors(const TempDir& dir) {
     bethconv::test::write_record(sndrs, "SNDR", 0x0100'0E70, sndr.span());
     top_group(file, "SNDR", sndrs);
 
+    // MUSC and MUST as in Skyrim.esm: a type over a single track (cue points,
+    // finale, a condition) and a palette (silent entries, loop data on its track).
+    ByteWriter musc;
+    field_text(musc, "EDID", "TestMUSExplore");
+    field_u32(musc, "FNAM", 0x24); // cycle tracks, ducks current track
+    field_u32(musc, "PNAM", 0x2710'0002); // priority 2, ducking 100.00 dB
+    ByteWriter wnam_musc;
+    wnam_musc.f32(9.0F);
+    bethconv::test::write_field(musc, "WNAM", wnam_musc);
+    ByteWriter tnam;
+    tnam.u32(0x0100'0E91);
+    tnam.u32(0x0100'0E92);
+    tnam.u32(0x0100'0E91);
+    bethconv::test::write_field(musc, "TNAM", tnam);
+    ByteWriter muscs;
+    bethconv::test::write_record(muscs, "MUSC", 0x0100'0E90, musc.span());
+    top_group(file, "MUSC", muscs);
+
+    ByteWriter single;
+    field_text(single, "EDID", "TestCombat01");
+    field_u32(single, "CNAM", 0x6ED7'E048);
+    field_text(single, "ANAM", "Data\\Music\\Combat\\MUS_Combat_01.wav");
+    field_text(single, "BNAM", "\\Data\\Music\\Combat\\MUS_Combat_01_Finale.wav");
+    ByteWriter cues;
+    cues.f32(3.5F);
+    cues.f32(12.25F);
+    bethconv::test::write_field(single, "FNAM", cues);
+    field_u32(single, "CITC", 1);
+    ByteWriter must_ctda;
+    must_ctda.u32(0);
+    must_ctda.f32(1.0F);
+    must_ctda.u16(72); // GetIsID
+    must_ctda.u16(0);
+    must_ctda.u32(0x0100'0E30);
+    must_ctda.u32(0);
+    must_ctda.u32(0);
+    must_ctda.u32(0);
+    must_ctda.u32(0xFFFF'FFFF);
+    bethconv::test::write_field(single, "CTDA", must_ctda);
+    ByteWriter palette;
+    field_text(palette, "EDID", "TestPalette");
+    field_u32(palette, "CNAM", 0x23F6'78C3);
+    ByteWriter fltv;
+    fltv.f32(300.0F);
+    bethconv::test::write_field(palette, "FLTV", fltv);
+    ByteWriter dnam_must;
+    dnam_must.f32(15.0F);
+    bethconv::test::write_field(palette, "DNAM", dnam_must);
+    ByteWriter snam_must;
+    snam_must.u32(0x0100'0E93);
+    snam_must.u32(0);
+    snam_must.u32(0x0100'0E91);
+    bethconv::test::write_field(palette, "SNAM", snam_must);
+    ByteWriter looped;
+    field_text(looped, "EDID", "TestChantLP");
+    field_u32(looped, "CNAM", 0x6ED7'E048);
+    field_text(looped, "ANAM", "Data\\Music\\MUS_Chant_LP.wav");
+    ByteWriter lnam_must;
+    lnam_must.f32(0.0F);
+    lnam_must.f32(209.24F);
+    lnam_must.u32(90);
+    bethconv::test::write_field(looped, "LNAM", lnam_must);
+    ByteWriter musts;
+    bethconv::test::write_record(musts, "MUST", 0x0100'0E91, single.span());
+    bethconv::test::write_record(musts, "MUST", 0x0100'0E92, palette.span());
+    bethconv::test::write_record(musts, "MUST", 0x0100'0E93, looped.span());
+    top_group(file, "MUST", musts);
+
     ByteWriter snct;
     field_text(snct, "EDID", "TestCategory");
     field_u32(snct, "FNAM", 2);
@@ -1768,6 +1856,40 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(sndr_out->lnam_unknown0 == 1);
     CHECK(sndr_out->rumble == 0x53);
     CHECK(sndr_out->alternate_for == 0x0200'0E74);
+
+    CHECK(stats->music_types == 1);
+    CHECK(stats->music_tracks == 3);
+    const auto musc_out = file->music_type(0x0200'0E90);
+    REQUIRE(musc_out.has_value());
+    CHECK(musc_out->editor_id == "TestMUSExplore");
+    CHECK(skydot::formats::has_flag(musc_out->flags, pack::wfb::MusicTypeFlags::cycle_tracks));
+    CHECK(skydot::formats::has_flag(musc_out->flags, pack::wfb::MusicTypeFlags::ducks_current_track));
+    CHECK_FALSE(skydot::formats::has_flag(musc_out->flags, pack::wfb::MusicTypeFlags::plays_one_selection));
+    CHECK(musc_out->priority == 2);
+    CHECK(musc_out->ducking == 10000);
+    CHECK(musc_out->fade_duration == 9.0F);
+    CHECK(musc_out->tracks == std::vector<std::uint32_t>{0x0200'0E91, 0x0200'0E92, 0x0200'0E91});
+    const auto single_out = file->music_track(0x0200'0E91);
+    REQUIRE(single_out.has_value());
+    CHECK(single_out->track_type == pack::wfb::MusicTrackType::single);
+    CHECK(single_out->file == "music/combat/mus_combat_01.xwm");
+    CHECK(single_out->finale == "music/combat/mus_combat_01_finale.xwm");
+    CHECK(single_out->cue_points == std::vector<float>{3.5F, 12.25F});
+    CHECK(single_out->loop_count == 0);
+    CHECK(single_out->conditions.size() == 1);
+    CHECK(single_out->tracks.empty());
+    const auto palette_out = file->music_track(0x0200'0E92);
+    REQUIRE(palette_out.has_value());
+    CHECK(palette_out->track_type == pack::wfb::MusicTrackType::palette);
+    CHECK(palette_out->duration == 300.0F);
+    CHECK(palette_out->fade_out == 15.0F);
+    CHECK(palette_out->file.empty());
+    CHECK(palette_out->tracks == std::vector<std::uint32_t>{0x0200'0E93, 0, 0x0200'0E91});
+    const auto looped_out = file->music_track(0x0200'0E93);
+    REQUIRE(looped_out.has_value());
+    CHECK(looped_out->file == "music/mus_chant_lp.xwm");
+    CHECK(looped_out->loop_end == 209.24F);
+    CHECK(looped_out->loop_count == 90);
     const auto snct_out = file->sound_category(0x0200'0E73);
     REQUIRE(snct_out.has_value());
     CHECK(snct_out->flags == 2);

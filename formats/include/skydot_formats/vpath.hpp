@@ -102,4 +102,18 @@ namespace skydot::formats {
     return under_folder(out, "sound/");
 }
 
+/// A MUST file name (ANAM, BNAM) is relative to `Data\`, with or without
+/// that prefix, and names a `.wav` where the archives hold a `.xwm` of the same
+/// name (every vanilla one): the normalized virtual path of the `.xwm`.
+[[nodiscard]] inline std::string music_vpath(std::string_view path) {
+    std::string out = normalize_vpath(path);
+    if (out.starts_with("data/")) {
+        out.erase(0, 5);
+    }
+    if (out.ends_with(".wav")) {
+        out.replace(out.size() - 3, 3, "xwm");
+    }
+    return out;
+}
+
 } // namespace skydot::formats

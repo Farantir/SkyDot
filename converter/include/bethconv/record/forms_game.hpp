@@ -966,6 +966,34 @@ struct SoundDescriptor {
     std::uint16_t static_attenuation{};
 };
 
+/// MUST: a music track. Layouts checked against Skyrim.esm (258 records).
+struct MusicTrack {
+    std::string editor_id;
+    /// CNAM, a hash: 0x6ED7E048 single track, 0x23F678C3 palette, 0xA1A9C4D5
+    /// silent track (xEdit's names).
+    std::uint32_t track_type{};
+    float duration{};                  ///< FLTV, seconds; palettes and silent tracks.
+    float fade_out{};                  ///< DNAM, seconds; palettes.
+    std::string file;                  ///< ANAM, relative to Data, e.g. `Data\Music\...wav`.
+    std::string finale;                ///< BNAM, same form, some with a leading `\`.
+    std::vector<float> cue_points;     ///< FNAM, seconds.
+    /// LNAM, 12 bytes on its one vanilla use: loop begin and end (seconds), count.
+    std::optional<std::array<float, 2>> loop;
+    std::uint32_t loop_count{};
+    std::vector<Condition> conditions; ///< CITC, CTDA with its CIS1/CIS2.
+    std::vector<FormId> tracks;        ///< SNAM: a palette's MUSTs in order, null entries kept.
+};
+
+/// MUSC: a music type. Layouts checked against Skyrim.esm (50 records).
+struct MusicType {
+    std::string editor_id;
+    std::uint32_t flags{};      ///< FNAM
+    std::uint16_t priority{};   ///< PNAM[0..1]
+    std::uint16_t ducking{};    ///< PNAM[2..3], hundredths of a dB.
+    float fade_duration{};      ///< WNAM, seconds.
+    std::vector<FormId> tracks; ///< TNAM, MUSTs (repeats kept).
+};
+
 /// SOUN: a sound marker. The old inline sound (FNAM, SNDD) is not read.
 struct SoundMarker {
     std::string editor_id;
@@ -1102,6 +1130,10 @@ struct VendorValues {
 [[nodiscard]] io::ParseResult<Message> parse_message(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<SoundDescriptor> parse_sound_descriptor(io::SpanReader& data,
                                                                       const FormContext& ctx);
+[[nodiscard]] io::ParseResult<MusicTrack> parse_music_track(io::SpanReader& data,
+                                                         const FormContext& ctx);
+[[nodiscard]] io::ParseResult<MusicType> parse_music_type(io::SpanReader& data,
+                                                       const FormContext& ctx);
 [[nodiscard]] io::ParseResult<SoundMarker> parse_sound_marker(io::SpanReader& data,
                                                               const FormContext& ctx);
 [[nodiscard]] io::ParseResult<SoundOutputModel> parse_sound_output_model(io::SpanReader& data,
