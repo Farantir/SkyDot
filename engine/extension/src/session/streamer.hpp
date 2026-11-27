@@ -33,6 +33,7 @@
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -191,8 +192,9 @@ public:
     bool step();
 
     /// Hold the player while the ground under it is still being built (and
-    /// while `fading` through a door), and give it the water level of the
-    /// cell it is in.
+    /// while `fading` through a door), and give it the water it is in: the
+    /// cell's, or a placed water box around the feet whose surface is higher,
+    /// with that water's current.
     void hold_player(SkydotPlayer* player, bool fading);
     /// Finer or coarser LOD: the split distance times `factor`, within
     /// limits. Returns the new one.
@@ -203,7 +205,7 @@ public:
 
     // ---- Preloading (preload.cpp) -------------------------------------------
 
-    /// Remember the load doors among the references of `cell`, just built.
+    /// Remember the load doors and placed water among the references of `cell`, just built.
     void register_doors(godot::Node* cell);
     /// Door reference -> its node, in the place shown.
     godot::Dictionary get_load_doors() const;
@@ -237,6 +239,13 @@ private:
     /// around it are (one out of range is waited for, too: a deck or floor of the next cell may be
     /// what it stands on).
     void release_actors();
+    /// Remember the water boxes of the reference at `node`, with its current.
+    void register_water(std::uint32_t ref, godot::Node* node);
+    /// Placed water around `feet` (the highest surface above `surface`): raises `surface` and sets
+    /// `current`.
+    bool placed_water_at(const godot::Vector3& feet, double& surface, godot::Vector3& current);
+    /// Cell water's current at `feet` in the cell at `key`, whose water plane is `water`.
+    godot::Vector3 cell_current(const CellKey& key, godot::Node3D* water, const godot::Vector3& feet);
     std::vector<std::uint64_t> awaiting_; ///< Instance ids.
     bool batch_ = false;
     godot::Ref<SkydotPreparation> begin_preparation(const godot::Dictionary& door);
@@ -268,6 +277,21 @@ private:
     bool streaming_ = false;
     bool lod_busy_ = false;
     std::int64_t max_usec_ = 0;
+
+    /// A placed water reference's box (a layer 11 phantom of its model, collision.hpp).
+    struct PlacedWater {
+        std::uint64_t node = 0;  ///< The reference's node.
+        godot::Transform3D box;  ///< The box's frame (game units) in the node's.
+        godot::Vector3 half;     ///< Game units.
+        godot::Vector3 current;  ///< Metres per second, Godot space.
+    };
+    std::vector<PlacedWater> placed_water_;
+    /// Per cell entered: its water type's current, else its flowmap (RGBA8), else none.
+    struct CellCurrent {
+        godot::Vector3 linear;
+        godot::Ref<godot::Image> flow;
+    };
+    std::map<CellKey, CellCurrent> cell_currents_;
 
     /// Load door reference -> its node, in the order they were found.
     std::vector<std::pair<std::uint32_t, std::uint64_t>> load_doors_;

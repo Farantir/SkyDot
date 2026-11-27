@@ -6,9 +6,9 @@
 // each frame (`set_input`, `set_look`, `jump`) and applied on physics ticks:
 // accelerate towards walk, run or sprint speed, fall, jump, climb steps up to
 // `step_height` (CharacterBody3D cannot), swim when the chest is under
-// `water_height`, and push clutter it walks into. `fly` ignores collision and
-// moves where the camera looks. `hold` freezes it, for while the ground under
-// it is still loading.
+// `water_height` (carried by `water_current`), and push clutter it walks
+// into. `fly` ignores collision and moves where the camera looks. `hold`
+// freezes it, for while the ground under it is still loading.
 //
 // The camera should follow `get_eye_position`, which interpolates between
 // physics ticks so the view does not judder at high frame rates.
@@ -58,7 +58,13 @@ public:
     /// Water surface height in Godot space; `clear_water` for none.
     void set_water_height(double height);
     double get_water_height() const { return water_height_; }
-    void clear_water() { has_water_ = false; }
+    void clear_water() {
+        has_water_ = false;
+        water_current_ = godot::Vector3();
+    }
+    /// The water's current (metres per second, Godot space): added to the swim velocity.
+    void set_water_current(const godot::Vector3& v) { water_current_ = v; }
+    godot::Vector3 get_water_current() const { return water_current_; }
     bool has_water() const { return has_water_; }
     /// The eye under the surface: the breath runs out meanwhile.
     bool is_underwater() const;
@@ -154,6 +160,7 @@ private:
     double breath_{20.0};
     bool has_water_{false};
     double water_height_{0.0};
+    godot::Vector3 water_current_;
     godot::Vector3 previous_; ///< Feet at the last two ticks.
     godot::Vector3 current_;
 };

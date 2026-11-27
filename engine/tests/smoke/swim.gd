@@ -2,7 +2,8 @@
 #
 # SkydotPlayer in deep water (no pack): swimming forward looking 60 degrees
 # down dives (the eye goes under, the breath runs down); without input it
-# floats back up to the chest just under the surface and its breath is back.
+# floats back up to the chest just under the surface and its breath is back;
+# a current carries it along.
 extends SceneTree
 
 var failures := 0
@@ -57,6 +58,16 @@ func _run() -> void:
     player.set_input(Vector2(0, 1), 0, SkydotPlayer.RUN)
     await ticks(hz * 2)
     expect(player.is_swimming() and player.global_position.y + 1.25 < 10.0, "looking up stays in the water")
+
+    # Without input a current carries it along, at the current's speed.
+    player.set_input(Vector2.ZERO, 0, SkydotPlayer.RUN)
+    player.water_current = Vector3(2.0, 0, -1.0)
+    var from := player.global_position
+    await ticks(hz * 5)
+    var drift := player.global_position - from
+    expect(drift.x > 8.0 and drift.z < -4.0 and drift.x < 10.0, "the current carries it: %s" % drift)
+    player.clear_water()
+    expect(player.water_current == Vector3.ZERO, "clear_water clears the current")
 
     player.free()
     if failures == 0:

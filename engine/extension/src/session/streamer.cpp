@@ -5,9 +5,15 @@
 #include "session/streamer.hpp"
 #include "actors/actor.hpp"
 
+#include "data/coordinates.hpp"
+#include "physics/collision.hpp"
 #include "session/held_place.hpp"
 
+#include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/os.hpp>
+#include <godot_cpp/classes/primitive_mesh.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/object.hpp>
@@ -17,6 +23,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 
 using godot::Node3D;
 using godot::Vector2i;
@@ -223,6 +230,7 @@ void SkydotStreamer::clear() {
         }
     }
     loaded_.clear();
+    cell_currents_.clear();
     for (const auto& [key, id] : building_) {
         if (auto* cell = godot::Object::cast_to<Node3D>(godot::ObjectDB::get_instance(id))) {
             cell->queue_free();
@@ -480,21 +488,153 @@ void SkydotStreamer::release_actors() {
 }
 
 void SkydotStreamer::hold_player(SkydotPlayer* player, bool fading) {
+    const Vector3 feet = player->get_global_position();
+    double surface = -std::numeric_limits<double>::infinity();
+    Vector3 current;
     if (world_id_ == 0) {
         player->set_hold(fading);
-        player->clear_water();
-        return;
+    } else {
+        const Vector2i at = camera_cell();
+        const auto it = loaded_.find({at.x, at.y});
+        player->set_hold((it == loaded_.end() && !player->get_fly()) || fading);
+        Node3D* cell = it != loaded_.end() ? godot::Object::cast_to<Node3D>(godot::ObjectDB::get_instance(it->second)) : nullptr;
+        auto* water = cell != nullptr ? godot::Object::cast_to<Node3D>(cell->get_node_or_null(godot::NodePath("Water"))) : nullptr;
+        if (water != nullptr) {
+            surface = static_cast<double>(water->get_global_position().y);
+            current = cell_current({at.x, at.y}, water, feet);
+        }
     }
-    const Vector2i at = camera_cell();
-    const auto it = loaded_.find({at.x, at.y});
-    player->set_hold((it == loaded_.end() && !player->get_fly()) || fading);
-    Node3D* cell = it != loaded_.end() ? godot::Object::cast_to<Node3D>(godot::ObjectDB::get_instance(it->second)) : nullptr;
-    auto* water = cell != nullptr ? godot::Object::cast_to<Node3D>(cell->get_node_or_null(godot::NodePath("Water"))) : nullptr;
-    if (water != nullptr) {
-        player->set_water_height(static_cast<double>(water->get_global_position().y));
+    const bool placed = placed_water_at(feet, surface, current);
+    if (placed || std::isfinite(surface)) {
+        player->set_water_height(surface);
+        player->set_water_current(current);
     } else {
         player->clear_water();
     }
+}
+
+// ---- Water ---------------------------------------------------------------
+
+namespace {
+
+/// A current in Havok units per second, game axes, as metres per second in Godot space.
+Vector3 godot_velocity(const Vector3& havok) {
+    return skyrim_position(havok * k_havok_scale) - skyrim_position(Vector3());
+}
+
+/// Skyrim's water layer (L_WATER): a placed water model's volume.
+constexpr std::int64_t k_water_layer = 11;
+
+/// The flowmap's fill outside the rivers (RG 120, 0: 99.6% of it on dry land in Skyrim.esm's).
+bool flow_fill(const godot::Color& texel) { return texel.get_r8() == 120 && texel.get_g8() == 0; }
+
+/// A flowmap texel's current at full scroll (assumed): RiverWaterFlowNE's NAM0 speed, Havok units
+/// per second.
+constexpr double k_flow_speed = 2.877;
+
+} // namespace
+
+void SkydotStreamer::register_water(std::uint32_t ref, godot::Node* node) {
+    auto* placed = godot::Object::cast_to<Node3D>(node);
+    if (placed == nullptr || !node->has_meta(k_phantoms_meta) ||
+        std::ranges::any_of(placed_water_, [&](const PlacedWater& w) { return w.node == node->get_instance_id(); })) {
+        return;
+    }
+    // The reference's XWCU (its first entry), else its water type's NAM0.
+    Vector3 havok;
+    const godot::Array currents = world_->get_ref_water_currents(ref);
+    if (!currents.is_empty()) {
+        const godot::Vector4 v = currents[0];
+        havok = Vector3(v.x, v.y, v.z);
+    } else if (const std::int64_t type = world_->get_ref_water_type(ref); type != 0) {
+        havok = world_->get_water_velocity(type).get("linear", Vector3());
+    }
+    const godot::Array list = node->get_meta(k_phantoms_meta);
+    for (std::int64_t i = 0; i < list.size(); ++i) {
+        const godot::Dictionary d = list[i];
+        if (static_cast<std::int64_t>(d.get("layer", 0)) == k_water_layer && godot::String(d.get("kind", "")) == "box") {
+            placed_water_.push_back({node->get_instance_id(), d["transform"], d["half"], godot_velocity(havok)});
+        }
+    }
+}
+
+// The surface is the box's top face over the feet.
+bool SkydotStreamer::placed_water_at(const Vector3& feet, double& surface, Vector3& current) {
+    bool found = false;
+    for (auto it = placed_water_.begin(); it != placed_water_.end();) {
+        auto* node = godot::Object::cast_to<Node3D>(godot::ObjectDB::get_instance(it->node));
+        if (node == nullptr || node->is_queued_for_deletion()) {
+            it = placed_water_.erase(it);
+            continue;
+        }
+        const godot::Transform3D box = node->get_global_transform() * it->box;
+        const Vector3 p = box.affine_inverse().xform(feet);
+        const Vector3& h = it->half;
+        if (node->is_visible_in_tree() && std::abs(p.x) <= h.x && std::abs(p.y) <= h.y && std::abs(p.z) <= h.z) {
+            // The top face: the box axis most upright, towards up.
+            int up = 0;
+            for (int k = 1; k < 3; ++k) {
+                if (std::abs(box.basis.get_column(k).y) > std::abs(box.basis.get_column(up).y)) {
+                    up = k;
+                }
+            }
+            Vector3 face = p;
+            face[up] = box.basis.get_column(up).y > 0 ? h[up] : -h[up];
+            const double top = static_cast<double>(box.xform(face).y);
+            if (top > surface) {
+                surface = top;
+                current = it->current;
+                found = true;
+            }
+        }
+        ++it;
+    }
+    return found;
+}
+
+// The cell's water type's NAM0; without one, the flowmap the water plane draws (decoration.cpp):
+// RG the direction (2c - 1: x east, y north, as the water shader's rotation), A its scroll, taken
+// as a fraction of k_flow_speed (assumed).
+Vector3 SkydotStreamer::cell_current(const CellKey& key, Node3D* water, const Vector3& feet) {
+    auto it = cell_currents_.find(key);
+    if (it == cell_currents_.end()) {
+        CellCurrent made;
+        const std::int64_t type = world_->get_cell_water_type(world_->get_exterior_cell(world_id_, key.first, key.second));
+        made.linear = godot_velocity(world_->get_water_velocity(type).get("linear", Vector3()));
+        const auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(water);
+        const godot::Ref<godot::PrimitiveMesh> plane = mesh != nullptr ? mesh->get_mesh() : godot::Ref<godot::Mesh>();
+        const godot::Ref<godot::ShaderMaterial> material = plane.is_valid() ? plane->get_material() : godot::Ref<godot::Material>();
+        if (made.linear.is_zero_approx() && material.is_valid() && material->get_shader_parameter("flow_enabled")) {
+            const godot::Ref<godot::Texture2D> flow = material->get_shader_parameter("flow_tex");
+            if (flow.is_valid()) {
+                made.flow = flow->get_image();
+            }
+            if (made.flow.is_valid()) {
+                made.flow = made.flow->duplicate();
+                if (made.flow->is_compressed()) {
+                    made.flow->decompress();
+                }
+                made.flow->convert(godot::Image::FORMAT_RGBA8);
+            }
+        }
+        it = cell_currents_.emplace(key, made).first;
+    }
+    const CellCurrent& c = it->second;
+    if (c.flow.is_null() || c.flow->is_empty()) {
+        return c.linear;
+    }
+    // Rows run north to south.
+    const Vector3 game = godot_to_skyrim(feet);
+    const double u = (static_cast<double>(game.x) - key.first * k_cell_units) / k_cell_units;
+    const double v = ((key.second + 1) * k_cell_units - static_cast<double>(game.y)) / k_cell_units;
+    const int px = std::clamp(static_cast<int>(u * c.flow->get_width()), 0, c.flow->get_width() - 1);
+    const int py = std::clamp(static_cast<int>(v * c.flow->get_height()), 0, c.flow->get_height() - 1);
+    const godot::Color texel = c.flow->get_pixel(px, py);
+    if (flow_fill(texel)) {
+        return {};
+    }
+    const Vector3 direction(texel.r * 2 - 1, texel.g * 2 - 1, 0);
+    return godot_velocity(direction * static_cast<godot::real_t>(static_cast<double>(texel.a) * k_flow_speed));
 }
 
 double SkydotStreamer::scale_lod_split(double factor) {

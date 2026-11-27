@@ -85,6 +85,10 @@ bottom meets a step's edge at a slant and slides off.
   surface (at most 1 m/s); moving level or upwards stops there instead of
   leaving the water. The 0.1 m, the 1 m/s and the water's acceleration are
   assumed, as is diving at any downward pitch (no dead zone is known).
+- The water's current (`water_current`, m/s) is added to the swim velocity,
+  so without input the swimmer drifts at its speed (assumed: how the game's
+  Havok water applies NAM0/XWCU to a character is not known). Not while
+  wading.
 - Breath: `is_underwater` (the eye under the surface) runs `get_breath` (1 to
   0) down over `breath_time`, 20 s, and refills it at once above water
   (assumed). 20 s is what players measure for vanilla Skyrim;
@@ -108,8 +112,13 @@ Skyrim makes water two ways (Skyrim.esm and Update.esm, read 2026-11-27):
   cell water at -250 in most cells of (2..7, -13..-9). Skyrim.esm gives them
   RiverWaterFlowNE; Update.esm sets 613 cells to the SE flow-map type
   RiverWaterFlow, whose NAM0 current is 0. SE adds 641 per-cell flow maps,
-  textures/water/skyrim.esm/flow.X.Y.dds (64x64 BGRA); what their channels
-  mean is not decoded.
+  textures/water/skyrim.esm/flow.X.Y.dds (64x64 BGRA, north row first). The
+  water shader reads RG as its rotation; as a direction (2c - 1, x east, y
+  north) it points downstream in every river texel around Riverwood (the
+  White River flows north-east: (0.88, 0.46) as RiverWaterFlowNE's NAM0) and
+  is a unit vector. A is the pattern's scroll speed (0 to 1, mostly 1 in
+  rivers), B its tiling. RG (120, 0) fills the rest: 99.6% of it is on dry
+  land.
 - Placed water: references of an ACTI with WNAM (a WATR): 62 such
   activators, 691 references (207 in Tamriel, 406 in interiors), models
   meshes/water/water1024.nif and similar (and some architecture and
@@ -128,9 +137,22 @@ Skyrim.esm types have a linear one, none an angular one. 128 placed
 references carry XWCN 3 and XWCU (3 x X, Y, Z, W); the first entry is the
 type's NAM0 as it was when placed (100 of 128 equal it, the rest older
 values), the others and every W are 0. Rotating a reference does not turn
-it. Assumed: the reference's XWCU is what pushes, in Havok units (about 1 m)
-per second; cell water pushes at its type's NAM0. Not yet applied to the
-player.
+it.
+
+The swimmer's water (`SkydotStreamer.hold_player`): the cell's water plane,
+or a placed water box around the feet whose top is higher (the streamer keeps
+the boxes of every reference it registers, the persistent cell's too, and of
+interiors). Its current, all assumed, in Havok units (1 m) per second, game
+axes turned into Godot's:
+
+- placed water: the reference's XWCU first entry, else its type's NAM0;
+- cell water: its type's NAM0; if that is 0 and the plane draws a flowmap,
+  the texel under the feet: its direction times A times 2.88 (RiverWaterFlowNE's
+  NAM0 speed); the fill texel pushes nothing. The game may not push by
+  flowmaps at all (they may only be looks). Update.esm's 613 RiverWaterFlow
+  cells had various Skyrim.esm types before: 247 none, 154 RiverWaterFlowNE
+  (2.88), the rest 0.16 to 2.9; world.fb keeps only the winner, so one speed
+  stands in for all.
 
 `SkydotWorld`: `get_ref_water_type`, `get_ref_water_currents` (Vector4s, game
 axes), `get_cell_water_type`, `get_water_velocity` (linear, angular).

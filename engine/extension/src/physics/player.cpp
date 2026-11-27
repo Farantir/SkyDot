@@ -88,6 +88,7 @@ void SkydotPlayer::_bind_methods() {
     SKYDOT_PROPERTY(fly, BOOL);
     SKYDOT_PROPERTY(hold, BOOL);
     SKYDOT_PROPERTY(water_height, FLOAT);
+    SKYDOT_PROPERTY(water_current, VECTOR3);
     SKYDOT_PROPERTY(eye_height, FLOAT);
     SKYDOT_PROPERTY(walk_speed, FLOAT);
     SKYDOT_PROPERTY(run_speed, FLOAT);
@@ -307,6 +308,8 @@ void SkydotPlayer::swim(double delta) {
             target.y = r(std::min(static_cast<double>(target.y), rest));
         }
     }
+    // The current carries the swimmer along (assumed: added to the swim velocity).
+    target += water_current_;
     set_velocity(get_velocity().lerp(target, r(std::min(1.0, k_water_accel * delta))));
     move_and_slide();
 }

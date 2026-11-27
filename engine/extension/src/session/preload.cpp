@@ -51,6 +51,7 @@ void SkydotStreamer::register_doors(Node* cell) {
     }
     for (Node* node : refs) {
         const auto ref = form_of(node->get_meta("skydot_ref"));
+        register_water(ref, node);
         if (world_->data().door_ptr(ref) == nullptr) {
             continue;
         }
