@@ -307,8 +307,8 @@ func _descriptor_id(editor_id: String) -> int:
 ## Any sound asset by vpath, told apart by its first bytes, not its extension:
 ## `RIFF` a WAV, `OggS` Ogg Vorbis (music), `SDVC` a voice container (its Ogg
 ## slice). Cached; null (warned once) when the pack lacks it or Godot cannot
-## read it. The lip bytes of a voice are not used.
-func load_stream(vpath: String) -> AudioStream:
+## read it. The lip bytes of a voice are not used. `cache` off: not kept (music).
+func load_stream(vpath: String, cache := true) -> AudioStream:
 	if _decoded.has(vpath):
 		return _decoded[vpath]
 	var stream: AudioStream = null
@@ -321,7 +321,8 @@ func load_stream(vpath: String) -> AudioStream:
 		stream = _ogg(bytes)
 		if stream == null:
 			_warn.once("file" + vpath, "sound file %s cannot be read" % vpath)
-	_decoded[vpath] = stream
+	if cache:
+		_decoded[vpath] = stream
 	return stream
 
 

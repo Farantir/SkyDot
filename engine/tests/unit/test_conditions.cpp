@@ -212,6 +212,16 @@ TEST_CASE("IsChild and IsUndead, GetRestrained rests at 0", "[conditions]") {
     CHECK(w.unknowns().counts().empty());
 }
 
+TEST_CASE("GetCombatTargetHasKeyword asks the subject's combat target, 0 without one", "[conditions]") {
+    FakeConditionWorld w;
+    w.keywords.insert({0x30, 0x35D59});
+    w.combat[0x14] = 0x30;
+    CHECK(pass({cond(fn::get_combat_target_has_keyword, 1.0F, 0x35D59)}, w, {.subject = 0x14}));
+    CHECK(pass({cond(fn::get_combat_target_has_keyword, 0.0F, 0x35D5A)}, w, {.subject = 0x14}));
+    CHECK(pass({cond(fn::get_combat_target_has_keyword, 0.0F, 0x35D59)}, w, {.subject = 0x15}));
+    CHECK(w.unknowns().counts().empty());
+}
+
 TEST_CASE("GetIsVoiceType takes the NPC's voice, else its race's, or a form list", "[conditions]") {
     FakeConditionWorld w;
     constexpr std::uint32_t k_male = 0xA1, k_female = 0xA2, k_own = 0xA3, k_list = 0xB1;

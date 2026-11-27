@@ -69,7 +69,9 @@ func _init(session: GameSession, input: PlayerInput, place: Callable, key_label 
 	session.dialogue_closed.connect(training_view.close)
 	journal_view.system.setting_changed.connect(func(name: String, value: Variant) -> void:
 		if name == "$Invert Y":
-			input.invert_look_y = int(value) == 1)
+			input.invert_look_y = int(value) == 1
+		elif name == "$Music" and session.music != null:
+			session.music.set_volume(float(value)))
 	session.sleep_requested.connect(open_sleep)
 	session.game_reset.connect(close_all.bind(true))
 

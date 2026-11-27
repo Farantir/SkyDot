@@ -329,6 +329,10 @@ std::uint32_t PapyrusConditionWorld::cell_world(std::uint32_t cell) const {
     return c != nullptr && !formats::has_flag(c->flags(), wfb::CellFlags::interior) ? c->world() : 0;
 }
 
+std::uint32_t PapyrusConditionWorld::combat_target(std::uint32_t ref) const {
+    return owner_ != nullptr && ref == k_player_ref ? owner_->player_combat_target_ : 0;
+}
+
 std::uint32_t PapyrusConditionWorld::cell_location(std::uint32_t cell) const {
     const auto* c = data() != nullptr ? data()->cell_ptr(cell) : nullptr;
     return c != nullptr ? c->location() : 0;

@@ -79,7 +79,7 @@ public:
     /// Cells whose editor id contains `filter` (case-insensitive), as
     /// dictionaries with id, editor_id, interior and ref_count.
     godot::Array list_cells(const godot::String& filter, bool interior_only) const;
-    /// Cell details without references: id, editor_id, interior, world, grid
+    /// Cell details without references: id, editor_id, interior, world, location (XLCN), grid
     /// (Vector2i or null), water_height (metres), lighting (Dictionary or null),
     /// ref_count, door_count.
     godot::Dictionary get_cell(std::int64_t id) const;

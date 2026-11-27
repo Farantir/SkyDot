@@ -387,6 +387,16 @@ if(SKYDOT_SSE_PACK)
         TIMEOUT 300
         ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
+    add_test(NAME sse_music_play
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/music_play_sse.gd")
+    set_tests_properties(sse_music_play PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     add_test(NAME sse_schedule_switch
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/schedule_switch_sse.gd")
     set_tests_properties(sse_schedule_switch PROPERTIES

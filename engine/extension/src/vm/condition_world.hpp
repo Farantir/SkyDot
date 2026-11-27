@@ -62,6 +62,8 @@ public:
     bool is_disabled(std::uint32_t ref) const override;
     std::int64_t item_count(std::uint32_t ref, std::uint32_t item) const override;
     std::int32_t level(std::uint32_t ref) const override;
+    /// The player's only: the latest actor to start fighting him (assumed).
+    std::uint32_t combat_target(std::uint32_t ref) const override;
 
     std::uint32_t cell_of(std::uint32_t ref) const override;
     bool cell_interior(std::uint32_t cell) const override;

@@ -418,6 +418,14 @@ std::uint64_t Vm::call_method(Instance* instance, std::string_view fn, std::vect
     return start(find_method(self, to_lower(fn)), self, std::move(args), true);
 }
 
+std::uint64_t Vm::call_method(std::uint32_t form, std::string_view cls, std::string_view fn, std::vector<Value> args) {
+    if (auto* i = instance(form, cls)) {
+        return call_method(i, fn, std::move(args));
+    }
+    const Value self = object(form, cls);
+    return start(find_method(self, to_lower(fn)), self, std::move(args), true);
+}
+
 std::optional<Value> Vm::take_result(std::uint64_t thread) {
     const auto it = results_.find(thread);
     if (it == results_.end()) {

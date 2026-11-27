@@ -240,6 +240,7 @@ var projectiles: Projectiles
 var sounds: Sounds
 ## The acoustic space, region and weather sounds where the listener is.
 var ambience: Ambience
+var music: Music
 ## Spoken lines (dialogue voices), one queue per speaker.
 var speech: Speech
 
@@ -377,6 +378,11 @@ func _make_game_nodes() -> void:
 		return 0
 	sounds.ambience = ambience
 	host.add_child(ambience)
+	music = Music.new(world, papyrus, sounds)
+	music.where = ambience.where
+	music.in_combat = func() -> bool: return rest != null and rest.fighting()
+	music.play_streams = config.music
+	host.add_child(music)
 	speech = Speech.new(sounds, world.find_ref_node)
 	host.add_child(speech)
 	speech.line_started.connect(_on_speech_started)

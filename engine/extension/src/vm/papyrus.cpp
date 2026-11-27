@@ -761,6 +761,12 @@ std::int64_t SkydotPapyrus::send_get_up(std::int64_t ref) {
 }
 
 std::int64_t SkydotPapyrus::combat_state_changed(std::int64_t ref, std::int64_t target, std::int64_t state) {
+    const auto actor = static_cast<std::uint32_t>(ref);
+    if (target == k_player_ref && state != 0) {
+        player_combat_target_ = actor;
+    } else if (player_combat_target_ == actor) {
+        player_combat_target_ = 0;
+    }
     const vm::Value who = target != 0 ? vm_->object(static_cast<std::uint32_t>(target), "Actor") : vm::Value{};
     return static_cast<std::int64_t>(dispatch(static_cast<std::uint32_t>(ref), "OnCombatStateChanged",
                                               {who, vm::Value::integer(static_cast<std::int32_t>(state))}));
@@ -1360,8 +1366,8 @@ std::int64_t SkydotPapyrus::call_method(std::int64_t form, const String& cls, co
     for (std::int64_t i = 0; i < args.size(); ++i) {
         values.push_back(to_value(args[i], ""));
     }
-    return static_cast<std::int64_t>(vm_->call_method(
-        vm_->instance(static_cast<std::uint32_t>(form), utf8(cls)), utf8(fn), std::move(values)));
+    return static_cast<std::int64_t>(
+        vm_->call_method(static_cast<std::uint32_t>(form), utf8(cls), utf8(fn), std::move(values)));
 }
 
 Dictionary SkydotPapyrus::take_result(std::int64_t thread) {

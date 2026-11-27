@@ -105,7 +105,8 @@ dialogue) or its value is 0 (AI packages), the index is counted per function
 (`ConditionWorld::unknowns()`), and one warning per index goes to the log.
 
 Run-on: 0 subject, 1 target, 2 the condition's reference, 3 the subject's
-combat target (the world answers 0 until combat exists), 4 the subject's
+combat target (the AI's; in Papyrus the player's is the latest actor to
+start fighting him, assumed, and others' 0), 4 the subject's
 linked reference (no keyword), 5 the fill of alias `param3` of the context's
 quest, 6 package data and 7 event data (no reference: 0). Flag 0x10 swaps
 subject and target first. A reference parameter with the "use aliases" flag
@@ -128,7 +129,8 @@ race's male or female voice; the parameter may be a form list), GetQuestComplete
 IsUndead 715 (keyword ActorTypeUndead 0x13796 on the NPC or its race), LocationHasKeyword 562 (the
 subject's current location), GetIsAliasRef 566, GetVMQuestVariable 629,
 GetVMScriptVariable 630 (the variable name is CIS2; any script on the form),
-GetActorValuePercent 640, IsLinkedTo 650. AI only: GetIsCurrentPackage 161,
+GetActorValuePercent 640, IsLinkedTo 650, GetCombatTargetHasKeyword 707 (the combat
+target's HasKeyword; 0 without one). AI only: GetIsCurrentPackage 161,
 GetNumericPackageData 612. GetEquippedShout 579 (the SHOU in the subject's voice slot equals
 parameter 1; `ConditionWorld::equipped_shout`, from the ShoutBook).
 

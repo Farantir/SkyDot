@@ -99,6 +99,7 @@ var msaa_index := 2  # into MSAA_STEPS: 4x
 var aa_index := 0  # into AA_STEPS
 var foliage_bias := 0.5  # mip levels blurrier for alpha-tested trees and grass
 var sound_range := 1.0  # times the output models' distances: how far positional sounds carry
+var music := true  # --music off: silent
 var render_scale := 1.0  # of the window; above 1 draws bigger and averages down (supersampling)
 var has_fov := false
 var fov := 75.0  # degrees, vertical
@@ -221,6 +222,7 @@ func game_config() -> GameConfig:
 	c.tiling = tiling
 	c.foliage_bias = foliage_bias
 	c.sound_range = sound_range
+	c.music = music
 	c.shadows = shadows
 	c.radius = radius
 	c.build_budget_usec = build_budget_usec
@@ -455,6 +457,7 @@ func _read_render(args: Dictionary) -> void:
 	foliage_bias = clampf(args.get("foliage-bias", "0.5").to_float(), 0.0, 4.0)
 	render_scale = clampf(args.get("render-scale", "1").to_float(), 1.0, 2.0)
 	sound_range = clampf(args.get("sound-range", "1").to_float(), 0.25, 8.0)
+	music = args.get("music", "on") != "off"
 	has_fov = args.has("fov")
 	fov = args.get("fov", "75").to_float()
 	fly = args.get("walk", "on") == "off" or not collision or captures

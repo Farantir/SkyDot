@@ -444,6 +444,8 @@ public:
     /// A playback instance id for a sound the game layer starts itself, from
     /// the same range as Sound.Play's; 0 (and an error) once the range is used up.
     std::int64_t new_sound_instance();
+    /// Start `fn` on the form's script of class `cls`, or without one a native
+    /// method of `cls` (MusicType.Add); the thread id, 0 if none.
     std::int64_t call_method(std::int64_t form, const godot::String& cls, const godot::String& fn,
                              const godot::Array& args);
     /// {done: bool, value}; value is only present once done.
@@ -938,6 +940,8 @@ private:
     /// game layer's, from `new_sound_instance`.
     vm::IdAllocator sound_ids_{vm::id_ranges::sound_instances};
     std::vector<std::uint32_t> music_stack_;
+    /// The latest actor to enter combat with the player, 0 once it leaves.
+    std::uint32_t player_combat_target_ = 0;
     godot::Ref<SkydotPack> pack_;
     godot::Ref<SkydotClock> clock_;
     /// Which of the clock's values a global form is (found by editor id), if any.

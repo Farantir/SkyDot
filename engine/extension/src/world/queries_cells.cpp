@@ -145,6 +145,7 @@ Dictionary get_cell(const WorldData& data, std::int64_t id) {
     // CELL DATA "Can't Travel From Here" (an interior's: sNoFastTravelCell).
     out["cant_travel_from_here"] = formats::has_flag(cell->flags(), wfb::CellFlags::cant_travel_from_here);
     out["world"] = static_cast<std::int64_t>(cell->world());
+    out["location"] = static_cast<std::int64_t>(cell->location());
     out["grid"] = cell->has_grid() ? godot::Variant(godot::Vector2i(cell->grid_x(), cell->grid_y()))
                                    : godot::Variant();
     out["water_height"] = static_cast<double>(cell->water_height()) * formats::k_metres_per_unit;

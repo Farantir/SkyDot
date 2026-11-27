@@ -25,6 +25,7 @@ var has_tiling := false
 var tiling := 0.0  # land texture repeats per cell
 var foliage_bias := 0.5  # mip levels blurrier for alpha-tested trees and grass
 var sound_range := 1.0  # times the output models' distances: how far positional sounds carry
+var music := false  # plays the music (the viewer's default; off only chooses it)
 var shadows := true  # the sun's, outside
 
 # How the world streams.

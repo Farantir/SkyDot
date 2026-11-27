@@ -11,7 +11,7 @@
 #                 chosen one's picture, "name, race, Level n", play time and date; Enter asks "Load this game? All
 #                 unsaved progress will be lost."
 #   SETTINGS      Gameplay, Display, Audio; Enter shows the options (sliders, steppers, check boxes); left/right change
-#                 the chosen one (`setting_changed`; only those SkyDot has do something: Invert Y)
+#                 the chosen one (`setting_changed`; only those SkyDot has do something: Invert Y, Music)
 #   CONTROLS      the Main Gameplay events of the control map with their keys (no remapping)
 #   QUIT_LIST     Main Menu, Desktop; Enter asks "Quit to desktop?  Any unsaved progress will be lost." (no main
 #                 menu exists: Main Menu's question leads nowhere)

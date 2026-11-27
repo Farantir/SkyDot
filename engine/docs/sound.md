@@ -143,8 +143,46 @@ Where music is chosen: CELL XCMO (397 cells), WRLD ZNAM (27; Tamriel's is
 the sounds), LCTN NAM1 (8), and the default objects DFMS (default,
 MUSExploreTestb), BTMS (battle, MUSCombat), DTMS (death), SCMS and LUMS
 (success, level up), DCMS (dungeon cleared). Papyrus pushes types with
-`MusicType.Add`. How the game ranks them (priority, stack order) is for the
-player.
+`MusicType.Add`. Priorities run from 1 (death, word of power) and 2 (combat,
+stings) through 5 (`_NONE`, a silent track) to 47..55 (castle, town, explore,
+dungeon, tavern): the lowest number is the most important.
+
+## Music (game/game/music.gd)
+
+- **Choosing**, every second and when the stack changes. The place's type is
+  the first set of: the location's (the cell's XCLN; an exterior's cell where
+  the player stands; no parent locations), the cell's XCMO, the regions'
+  RDMO (the highest region priority), the world's ZNAM, DFMS. Against it, by
+  MUSC priority (lowest number wins, a tie to the later): BTMS while an actor
+  fights the player, then MusicType.Add's stack, oldest first. The place
+  chain is not ranked by priority, since then Tamriel's `_NONE` (5) would
+  silence every region (49). All of it is assumed except the data; the
+  order sits in `Music.choose()`.
+- **Playing.** A type that ducks plays over the music below, which goes on
+  quieter by its ducking dB (combat 100: silent but kept); one that does not
+  crossfades over its fade duration, or cuts when abrupt. Cycle tracks: in
+  turn from a random start; maintain track order: from where the type was
+  left; else at random. Tracks whose conditions fail are passed over (none
+  passes: asked again after 5 s). A palette plays its tracks in turn,
+  wrapping, for its duration, fading out over its fade-out; a silent track
+  waits its duration; a loop (LNAM) seeks back to its begin count times.
+  Leaving a type plays its track's finale at the next cue point (no cue left:
+  at the end), else fades over the type's fade duration. A
+  plays-one-selection type is taken off the stack after one track; a
+  doesn't-queue type that cannot win when added is taken off at once. All
+  assumed; the duck ramp (1 s) and the retry (5 s) are placeholders.
+  Every combat track asks GetCombatTargetHasKeyword(0x35D59) of the player
+  (1 on the boss tracks, 0 on the others).
+- **Settings.** The Music bus (made at start, into Master) at the $Music
+  slider (default 0.5, linear). `--music off` (GameConfig.music, default off
+  outside the viewer): the choice is still made and logged, nothing decoded.
+- **Log and API.** `music: <MUSC editor id> (<source>)` when the choice
+  changes (source location, cell, region, world, default, combat, script),
+  `music: track <file>` and `music: finale <file>` when a file starts;
+  signals `chosen(type, source)` and `track_started(track, file, finale)`,
+  `choose()`, `layers()`, `set_volume()`.
+- **Not done:** DTMS, SCMS, LUMS and DCMS (nothing plays death, success,
+  level-up or cleared music), ducking of music under dialogue.
 
 ## Queries
 
@@ -167,7 +205,8 @@ loop_count, has_conditions, tracks), `find_music_type(editor_id)`,
 regions with music, as get_region_sounds' entries, `music` set);
 `get_default_object("DFMS")` and the other slots. `SkydotPapyrus.
 music_track_conditions_met(track)` runs a track's conditions on the player;
-`get_music_stack()` and the signal `music_changed` are MusicType.Add's stack.
+`get_music_stack()` and the signal `music_changed` are MusicType.Add's stack;
+`call_method(form, "MusicType", "Add", [])` runs it from GDScript.
 
 ## Playing (game/game/sounds.gd, game/game/ambience.gd)
 
@@ -222,7 +261,6 @@ music_track_conditions_met(track)` runs a track's conditions on the player;
   region one-shot distances too.
 - **Not done:** reverb (REVB, SOPM reverb send), priority and voice limits,
   loudness culling, rumble, footsteps (data in world.fb 42: FSTS/FSTP/ARMA
-  SNDD; needs the material under the foot), thunder, music playback (the data
-  and queries are above), dialogue
+  SNDD; needs the material under the foot), thunder, dialogue
   voices' categories and output models (speech.gd keeps Godot's inverse
   distance).

@@ -244,6 +244,8 @@ public:
     /// Returns its id, or 0 if there is no such function.
     std::uint64_t call_global(std::string_view cls, std::string_view fn, std::vector<Value> args);
     std::uint64_t call_method(Instance* instance, std::string_view fn, std::vector<Value> args);
+    /// A method on a form without a script of that class (a native one: MusicType.Add).
+    std::uint64_t call_method(std::uint32_t form, std::string_view cls, std::string_view fn, std::vector<Value> args);
 
     /// Advance the clock by `seconds` and run every thread that is ready.
     void update(double seconds);

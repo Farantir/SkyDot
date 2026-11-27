@@ -141,6 +141,10 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
         return flag(is_voice_type(world, subject, p1));
     case fn::has_keyword:
         return flag(world.has_keyword(subject, p1));
+    case fn::get_combat_target_has_keyword: {
+        const std::uint32_t target = world.combat_target(subject);
+        return flag(target != 0 && world.has_keyword(target, p1));
+    }
     case fn::is_child:
         return flag(world.is_child(subject));
     case fn::is_essential:
