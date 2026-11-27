@@ -1397,6 +1397,8 @@ table QuestAlias {
     /// The CTDAs counted by `conditions` (format 26): they choose the fill of
     /// an alias that nothing names.
     condition_list: [Condition];
+    /// ALPC, in order (format 49): packages the filling actor runs before its own.
+    packages: [uint32];
 }
 
 /// `Quest.flags`: DNAM (source: UESP, QUST record).

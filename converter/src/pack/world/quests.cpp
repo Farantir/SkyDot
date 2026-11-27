@@ -100,6 +100,9 @@ void QuestCollector::on_quest(const record::MergedRecord& merged, io::SpanReader
         a->conditions = static_cast<std::uint16_t>(alias.conditions.list.size());
         a->condition_list = shared_.global_conditions(merged, alias.conditions.list, failed);
         a->display_name = shared_.global(merged, alias.display_name, failed);
+        for (const auto package : alias.packages) {
+            a->packages.push_back(shared_.global(merged, package, failed));
+        }
         for (auto& attached : q->fragments.aliases) {
             if (attached.alias.alias >= 0 &&
                 static_cast<std::uint32_t>(attached.alias.alias) == alias.id) {

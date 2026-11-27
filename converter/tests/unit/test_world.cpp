@@ -1085,6 +1085,8 @@ void make_quests(const TempDir& dir) {
     field_u32(q, "ALST", 0);
     field_text(q, "ALID", "Guard");
     field_u32(q, "ALFR", 0x0100'0B01); // own actor, local
+    field_u32(q, "ALPC", 0x0100'0B06); // packages, in order
+    field_u32(q, "ALPC", 0x0000'0A01);
     bethconv::test::write_field(q, "ALED", ByteWriter{});
     field_u32(q, "ALST", 1);
     field_text(q, "ALID", "Boss");
@@ -1184,6 +1186,8 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     CHECK(quest->aliases[0]->scripts[0]->name == "TestAliasScript");
     CHECK(quest->aliases[1]->unique_actor == 0x0000'0900);
     CHECK(quest->aliases[1]->scripts.empty());
+    CHECK(quest->aliases[0]->packages == std::vector<std::uint32_t>{0x0200'0B06, 0x0000'0A01});
+    CHECK(quest->aliases[1]->packages.empty());
 
     const auto counter = file->global(0x0200'0C00);
     REQUIRE(counter.has_value());

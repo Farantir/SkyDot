@@ -90,7 +90,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (48; 48 added patrol points (Cell.patrol_points, REFR XPRD and INAM) and idle markers (World.idle_markers, IDLM); 47 added the DIAL of a package's Topic input (PackageInput.topic, PDTO); 46 added the world map and fast travel data (below: Worldspace.map_*, MapMarker.radius/arrival_*); 45 added ownership: REFR and CELL XOWN with XRNK (Cell.owners, Cell.owner, Cell.owner_rank); 44 added the race's name (Race.name, FULL); 43 added map markers (Cell.map_markers, REFR XMRK),
+own `format_version` (49; 49 added quest alias packages (QuestAlias.packages, ALPC); 48 added patrol points (Cell.patrol_points, REFR XPRD and INAM) and idle markers (World.idle_markers, IDLM); 47 added the DIAL of a package's Topic input (PackageInput.topic, PDTO); 46 added the world map and fast travel data (below: Worldspace.map_*, MapMarker.radius/arrival_*); 45 added ownership: REFR and CELL XOWN with XRNK (Cell.owners, Cell.owner, Cell.owner_rank); 44 added the race's name (Race.name, FULL); 43 added map markers (Cell.map_markers, REFR XMRK),
 default objects (DOBJ) and image space modifiers (IMAD, each curve's first key); 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
